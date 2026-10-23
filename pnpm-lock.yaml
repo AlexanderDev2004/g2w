@@ -226,6 +226,16 @@ importers:
       '@g2w/core':
         specifier: workspace:*
         version: link:../../packages/core
+      '@g2w/renderer-pixi':
+        specifier: workspace:*
+        version: link:../../packages/renderer-pixi
+      pixi.js:
+        specifier: 8.22.0
+        version: 8.22.0
+    devDependencies:
+      vite:
+        specifier: ^8.3.5
+        version: 8.3.5(@types/node@22.20.5)
 
   packages/core: {}
 

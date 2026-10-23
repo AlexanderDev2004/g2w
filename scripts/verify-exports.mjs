@@ -39,6 +39,9 @@ const core = await import(await entryFile("packages/core"));
 if (typeof core.RendererError !== "function") {
   throw new Error("@g2w/core does not export RendererError.");
 }
+if (typeof core.Game !== "function") {
+  throw new Error("@g2w/core does not export Game.");
+}
 
 const renderer = await import(await entryFile("packages/renderer-pixi"));
 if (typeof renderer.PixiRenderer !== "function") {

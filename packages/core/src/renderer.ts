@@ -52,4 +52,10 @@ export interface Renderer {
    * Rejects with {@link RendererError} if the renderer is not initialized.
    */
   dispose(): Promise<void>;
+  /**
+   * Render the current frame. Optional: renderers that drive their own
+   * rendering (or cannot render on demand) may omit it. The game loop calls
+   * this once per frame after the update callback, when present.
+   */
+  render?(): void;
 }

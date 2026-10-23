@@ -8,17 +8,43 @@ g2w is a TypeScript-first framework for building and shipping web games. 2D come
 
 ### `@g2w/core`
 
-Owns the renderer-agnostic **contract**: what a renderer is, how it is initialized against a canvas, and how it releases its resources. Concretely, the public API is:
-- `Renderer` — the lifecycle contract (`capabilities`, `initialized`, `initialize`, `dispose`).
+Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, the public API is:
+- `Renderer` — the lifecycle contract (`capabilities`, `initialized`, `initialize`, `dispose`) plus an optional `render()` hook that the game loop calls each frame when present.
 - `RendererCapabilities` — renderer identity (`id`, `displayName`).
 - `RendererInitOptions` — canvas, optional background color, optional resolution.
-- `RendererError` — thrown for invalid lifecycle usage.
+- `RendererError` — thrown for invalid renderer lifecycle usage.
+- `Game` / `GameOptions` / `GameState` — the runtime that owns a renderer and a frame loop (see below).
+- `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
-Core has **zero runtime dependencies** and **no rendering technology imports**. It will grow to own the game loop, scenes, and other framework services, but every rendering capability stays behind the contract.
+Core has **zero runtime dependencies** and **no rendering technology imports**. It will grow to own scenes and other framework services, but every rendering capability stays behind the contract.
 
 ### `@g2w/renderer-pixi`
 
-Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). At MVP 0 this is a minimal adapter, not a complete renderer: no scene, sprites, or render loop yet.
+Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. This is a minimal adapter, not a complete renderer: no scene graph API, sprites, or asset handling.
+
+### `Game` — lifecycle and frame loop
+
+`Game` (in core) owns exactly one renderer and drives it with a `requestAnimationFrame` loop. The state model:
+
+```text
+new ──init()──► initializing ──ok──► initialized ──start()──► running
+                  │                                        ▲       │
+                  │ init failure: rethrow,                 │       │
+                  ▼ returns to "new"                  start()   stop()
+                 new                                        │       ▼
+                                                            └─── stopped
+any state ──dispose()──► disposed (terminal, idempotent)
+```
+
+Policy highlights (each is covered by tests in `packages/core/test/game.test.ts`):
+- **Init** is only valid from `new`; concurrent calls share one in-flight promise, so the renderer initializes exactly once. A failure leaves the game back in `new` (retry allowed) and rethrows.
+- **Start** is valid from `initialized` and `stopped`; it is a no-op while `running` and throws `GameError` otherwise. Repeated starts schedule only one frame at a time.
+- **Stop** is always safe: from `running` it cancels the pending frame and enters `stopped`; during pending initialization it marks the game so it lands in `stopped` when init completes (the loop never starts); otherwise it is a no-op.
+- **Dispose** is idempotent and terminal. It cancels frames, awaits any in-flight initialization, then disposes the renderer if it was initialized. After disposal, `init`/`start` throw and `stop`/`dispose` are safe no-ops.
+- Each frame runs `onUpdate(deltaTime)` **before** `renderer.render()`. Delta time is in **seconds**, is `0` on the first frame after start/restart (the timestamp resets), and is clamped to `maxDeltaTime` (default `0.25`s) so a suspended tab cannot produce a huge jump.
+- A throw from `onUpdate` is fatal to the loop: the pending frame is cancelled, the state becomes `stopped`, and the error is rethrown to the scheduler — never swallowed.
+
+The scheduling mechanism is isolated behind the `FrameScheduler` interface (browser-only `requestAnimationFrame` code lives in its own module), so core lifecycle tests run in plain Node with a deterministic fake scheduler and never need a browser or GPU.
 
 ## Dependency direction
 
@@ -53,19 +79,23 @@ Why core stays renderer-agnostic:
 ## Tooling decisions
 
 - **pnpm workspaces** for the monorepo; `workspace:*` links between packages.
-- **TypeScript** with `NodeNext` module resolution, ESM-only packages, and strict settings (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitOverride`, `verbatimModuleSyntax`). Packages are built with `tsc -b` project references — no bundler at this stage.
+- **TypeScript** with `NodeNext` module resolution, ESM-only packages, and strict settings (`strict`, `noUncheckedIndexedAccess`, `noUnusedLocals`, `noUnusedParameters`, `noImplicitOverride`, `verbatimModuleSyntax`). Packages are built with `tsc -b` project references — no bundler for packages.
+- **Vite** serves and builds the browser example (`pnpm dev` / `pnpm build:example`), with workspace package sources aliased directly so development needs no prior package build.
 - **Biome** for formatting and linting (`pnpm check`).
-- **Vitest** for tests, running against package sources via a resolve alias so tests do not require a prior build. Core tests use a fake renderer and never need a browser or GPU.
+- **Vitest** for tests, running against package sources via a resolve alias so tests do not require a prior build. Core tests use a fake renderer and a deterministic fake frame scheduler; they never need a browser or GPU.
 - **pixi.js 8.22** as a dev dependency of the adapter with a `>=8` peer dependency, so consumers' PixiJS version is respected.
 
 ## Current vs provisional
 
-Current (MVP 0):
-- The `Renderer` contract above and the dependency direction it enforces.
-- PixiJS 8 async lifecycle handling and dispose semantics (canvas stays in the DOM).
+Current (MVP 1A):
+- The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
+- The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
+- PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
+- The hello-world Vite demo as the reference consumer of the public API.
 
 Provisional (expect to change in later MVPs):
 - The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
-- The PixiJS adapter's internals; it will be reworked once core owns the game loop.
+- The PixiJS adapter's internals; it will be reworked once core owns scenes and more rendering features.
+- The `stage` accessor on the adapter: it leaks a PixiJS `Container` type to adapter consumers. Acceptable while the adapter is the only way to draw; a renderer-agnostic display API would replace it.
 - The test aliasing setup; it may move to package-level configs when the workspace grows.

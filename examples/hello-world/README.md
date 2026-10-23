@@ -1,7 +1,23 @@
 # hello-world example
 
-A foundation-level example of the g2w renderer contract. `src/main.ts` implements a `FakeRenderer` against `@g2w/core`'s `Renderer` interface, initializes it against a canvas, and disposes it — no rendering technology involved.
+A minimal g2w browser demo: the `Game` runtime from `@g2w/core` drives a `PixiRenderer` from `@g2w/renderer-pixi` through the frame loop, animating a yellow square across a blue canvas. This is a real Vite application — it uses only the public exports of the workspace packages.
 
-This example is intentionally honest about the current stage: g2w's PixiJS adapter initializes a real PixiJS `Application`, but there is no build pipeline or starter for browser demos yet, so a runnable in-browser demo that actually draws will arrive with MVP 1.
+## Run it
 
-The example is type-checked as part of the workspace: run `pnpm typecheck` from the repository root.
+From the repository root:
+
+```sh
+pnpm install --frozen-lockfile
+pnpm dev
+```
+
+Then open the printed local URL (for example `http://localhost:5173/`) in a browser. Vite serves the example with the workspace package sources aliased directly, so no prior build is needed.
+
+## What it demonstrates
+
+- `new Game({ renderer, canvas, onUpdate })` — constructing the runtime with the PixiJS adapter and a canvas.
+- `await game.init()` — asynchronous renderer initialization (PixiJS 8 lifecycle).
+- `game.start()` — the frame loop: `onUpdate(deltaTime)` runs each frame with the elapsed time in seconds, then the renderer renders.
+- `game.dispose()` on page teardown (`pagehide`) — the loop stops and the renderer is disposed.
+
+If the game cannot start, the error is displayed on the page instead of failing silently.

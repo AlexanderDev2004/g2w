@@ -4,26 +4,29 @@ Guidance for AI coding agents (Amp and others) working in this repository.
 
 ## Project
 
-**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **MVP 0 — foundation**: monorepo, renderer contract, minimal PixiJS adapter, tests, CI, and docs.
+**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **MVP 1A — game runtime**: monorepo, renderer contract, `Game` lifecycle and frame loop, minimal PixiJS adapter, a Vite browser demo, tests, CI, and docs.
 
 ## Architecture boundaries
 
-- `@g2w/core` (packages/core) owns the renderer-agnostic contract. It must never import a rendering technology and must keep zero runtime dependencies.
+- `@g2w/core` (packages/core) owns the renderer-agnostic contract and the `Game` runtime. It must never import a rendering technology and must keep zero runtime dependencies.
 - `@g2w/renderer-pixi` (packages/renderer-pixi) implements the contract on top of PixiJS. It may depend on `@g2w/core` and PixiJS. The dependency must never point the other way.
-- Tests in `packages/core/test/architecture.test.ts` and `packages/renderer-pixi/test/pixi-renderer.test.ts` enforce these boundaries — keep them passing and extend them when adding packages.
+- `examples/hello-world` consumes only the public exports of both packages through Vite; it must not bypass g2w by creating a PixiJS `Application` directly.
+- Tests in `packages/core/test/architecture.test.ts`, `packages/core/test/game.test.ts`, and `packages/renderer-pixi/test/pixi-renderer.test.ts` enforce these boundaries — keep them passing and extend them when adding packages.
 
 ## Commands
 
 All commands run from the repository root with pnpm:
 - `pnpm install` — install dependencies (lockfile `pnpm-lock.yaml` is committed; use `--frozen-lockfile` in CI).
+- `pnpm dev` — run the hello-world browser demo with Vite (workspace sources aliased; no build needed first).
 - `pnpm build` — type-check and build packages via `tsc -b` project references.
+- `pnpm build:example` — production build of the browser demo.
 - `pnpm typecheck` — type-check all sources, tests, and examples (`tsc -p tsconfig.check.json --noEmit`).
 - `pnpm check` — Biome format + lint check.
 - `pnpm format` — Biome auto-format.
 - `pnpm test` — Vitest run (uses source aliases; no build required first).
 - `pnpm verify:exports` — verify built packages load through their entry points (run after `pnpm build`).
 
-Validate with `pnpm check`, `pnpm typecheck`, `pnpm build`, `pnpm verify:exports`, and `pnpm test` before finishing any change. CI (`.github/workflows/ci.yml`) runs exactly these commands.
+Validate with `pnpm check`, `pnpm typecheck`, `pnpm build`, `pnpm verify:exports`, and `pnpm test` before finishing any change. CI (`.github/workflows/ci.yml`) runs exactly these commands plus `pnpm build:example`.
 
 ## Conventions
 
@@ -31,13 +34,15 @@ Validate with `pnpm check`, `pnpm typecheck`, `pnpm build`, `pnpm verify:exports
 - ESM-only packages, NodeNext module resolution, `.js` extensions in relative imports.
 - Named exports only; no default exports.
 - Public API is small and explicit; prefer readonly types for shared options and capabilities.
+- `Game` lifecycle changes must keep the documented state model (README / docs/architecture.md) and its tests in sync — the state transitions are a public contract.
+- Core lifecycle tests must stay deterministic: drive frames through the injected `FrameScheduler` fake, never real timers or a browser.
 - No new dependencies without a clear need. `@g2w/core` stays dependency-free.
 - Do not enable `skipLibCheck: false`-style weakening or suppress type errors; fix the underlying issue.
 - Biome owns formatting (2-space indent, 100-char lines) — run `pnpm format` rather than hand-formatting.
 
 ## Scope discipline
 
-- Do not expand beyond the current MVP scope without explicit approval. Out of scope as of MVP 0: game loop, scene management, sprites, input, assets, audio, physics, integrations (React/Vue/Next.js/Effect), multiplayer, MCP servers, 3D runtime, npm publishing, release automation.
+- Do not expand beyond the current MVP scope without explicit approval. Out of scope as of MVP 1A: scene management, game objects, input (keyboard/pointer/touch), asset loading, audio, physics, animations, cameras, integrations (React/Vue/Next.js/Effect), multiplayer, MCP servers, 3D runtime, npm publishing, release automation.
 - Document planned-but-unimplemented features as roadmap items in the README or docs, never as stubs or placeholder code.
 
 ## Definition of done

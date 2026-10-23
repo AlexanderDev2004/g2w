@@ -29,6 +29,13 @@ describe("PixiRenderer", () => {
 
     await expect(renderer.dispose()).rejects.toThrow(RendererError);
   });
+
+  it("rejects rendering and stage access before initialization with a RendererError", () => {
+    const renderer = new PixiRenderer();
+
+    expect(() => renderer.render()).toThrow(RendererError);
+    expect(() => renderer.stage).toThrow(RendererError);
+  });
 });
 
 describe("dependency direction", () => {

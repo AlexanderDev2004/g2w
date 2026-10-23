@@ -26,3 +26,6 @@ Thumbs.db
 
 # pnpm-extracted agent skills from dependencies
 .agents/skills/pnpm-*
+
+# Local verification artifacts (screenshots, scratch output)
+.amp/

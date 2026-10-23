@@ -10,7 +10,9 @@
   },
   "scripts": {
     "build": "tsc -b",
+    "build:example": "pnpm --filter @g2w/example-hello-world build",
     "check": "biome check .",
+    "dev": "pnpm --filter @g2w/example-hello-world dev",
     "format": "biome format --write .",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",

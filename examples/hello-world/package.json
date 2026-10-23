@@ -3,8 +3,18 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Minimal g2w foundation example: the renderer contract with a fake renderer.",
+  "description": "Minimal g2w browser demo: the Game runtime with the PixiJS renderer, served by Vite.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview"
+  },
   "dependencies": {
-    "@g2w/core": "workspace:*"
+    "@g2w/core": "workspace:*",
+    "@g2w/renderer-pixi": "workspace:*",
+    "pixi.js": "8.22.0"
+  },
+  "devDependencies": {
+    "vite": "^8.3.5"
   }
 }

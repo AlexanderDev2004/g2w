@@ -1,4 +1,8 @@
 {
   "files": [],
-  "references": [{ "path": "packages/core" }, { "path": "packages/renderer-pixi" }]
+  "references": [
+    { "path": "packages/core" },
+    { "path": "packages/input-dom" },
+    { "path": "packages/renderer-pixi" }
+  ]
 }

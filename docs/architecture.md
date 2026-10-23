@@ -15,6 +15,7 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `RendererError` — thrown for invalid renderer lifecycle usage.
 - `Game` / `GameOptions` / `GameState` — the runtime that owns a renderer and a frame loop (see below).
 - `Scene` / `SceneManager` / `SceneManagerOptions` / `SceneError` — the renderer-agnostic scene system (see below).
+- `InputState` — the DOM-free keyboard and pointer state machine (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
 Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
@@ -22,6 +23,10 @@ Core has **zero runtime dependencies** and **no rendering technology imports**. 
 ### `@g2w/renderer-pixi`
 
 Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. This is a minimal adapter, not a complete renderer: no scene graph API, sprites, or asset handling.
+
+### `@g2w/input-dom`
+
+Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative canvas pixels, scaled by the canvas's internal resolution), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
 
 ### `Game` — lifecycle and frame loop
 
@@ -70,6 +75,20 @@ Policy highlights (each is covered by tests in `packages/core/test/scene-manager
 
 Intentionally unsupported (documented scope, not omissions by accident): scene stacks, transition effects, scene persistence, and async hooks.
 
+### `InputState` — input and frame semantics
+
+`InputState` (in core) is a DOM-free, renderer-agnostic state machine for keyboard and pointer input. Browser adapters feed it normalized events (`handleKeyDown`, `handleKeyUp`, `handlePointerMove`, `handleButtonDown`, `handleButtonUp`, `handleFocusLoss`, `handlePointerLeave`); game and scene code reads it through query methods (`isKeyDown`, `wasKeyPressed`, `wasKeyReleased`, `isButtonDown`, `wasButtonPressed`, `wasButtonReleased`, `pointerX`/`pointerY`). It is a plain class with no dependencies and no access to `window`, `document`, or DOM event types at runtime — the architecture test enforces this.
+
+Frame semantics (all covered by tests in `packages/core/test/input.test.ts`):
+- **Held state is continuous** (`down`); **pressed/released are per-frame edges**. Edges are set by input events and reset — all at once — only at the explicit boundary `endFrame()`.
+- **The boundary is composed, not built in:** applications call `input.endFrame()` exactly once per frame, after every consumer, typically as the last statement of `Game.onUpdate` after scene updates. Events arriving between frames accumulate into the next frame's edges; no second loop or hidden timer exists.
+- **A tap between two frames is not lost:** a key pressed and released before the next boundary reports `wasKeyPressed` _and_ `wasKeyReleased` in that frame while `isKeyDown` is already `false`.
+- **OS key repeat is not a new press:** repeated `keydown` events while a key is held are ignored; the press edge fires once per physical press.
+- **Focus loss** releases every held key and button and generates the matching released edges (game logic observes a normal release); the pointer position is kept. **Pointer leaving the canvas** releases held buttons the same way (the `pointerup` may happen off-canvas) and keeps the position.
+- Key identifiers are standard `KeyboardEvent.code` strings (`"KeyW"`, `"ArrowLeft"`, `"Space"`, ...); pointer buttons are numbered as in `MouseEvent.button` (0 = primary).
+
+Intentionally unsupported (documented scope, not omissions by accident): gamepad, touch gestures, action mapping or rebinding, input recording, drag-and-drop, and preventing default browser behavior from the framework.
+
 ## Dependency direction
 
 The single most important rule: **core must never depend on a renderer; renderers always depend on core.**
@@ -96,8 +115,9 @@ Why core stays renderer-agnostic:
 
 ## Dependency direction enforcement
 
-- `packages/core/test/architecture.test.ts` asserts core declares no runtime dependencies, no `pixi.js` dependency in any group, and no renderer imports in its source.
+- `packages/core/test/architecture.test.ts` asserts core declares no runtime dependencies, no `pixi.js` dependency in any group, no renderer imports in its source, and no runtime access to browser globals or DOM event APIs (`window`, `document`, `addEventListener`, `KeyboardEvent`, `PointerEvent`) in its source.
 - `packages/renderer-pixi/test/pixi-renderer.test.ts` asserts the adapter declares `@g2w/core` as a dependency and that core does not depend back on the adapter.
+- `packages/input-dom/test/package.test.ts` asserts the DOM input adapter declares `@g2w/core` as a dependency and composes with the core `InputState`.
 - `pnpm verify:exports` (also run in CI) loads the built packages through their real entry points.
 
 ## Tooling decisions
@@ -111,10 +131,11 @@ Why core stays renderer-agnostic:
 
 ## Current vs provisional
 
-Current (MVP 1B):
+Current (MVP 1C):
 - The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
 - The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
 - The `Scene` contract and `SceneManager` lifecycle, transition, error, and disposal semantics described above.
+- The `InputState` input state machine and its frame, focus-loss, and pointer-leave semantics described above, with the `@g2w/input-dom` browser adapter.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
 - The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter's provisional `stage` and keeps all PixiJS objects at the example boundary.

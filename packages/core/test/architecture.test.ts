@@ -56,4 +56,20 @@ describe("core architecture boundary", () => {
       expect(content).not.toMatch(/import\s+["'][^"']*pixi/);
     }
   });
+
+  it("never touches browser globals or DOM events at runtime in source", async () => {
+    const sourceFiles = await listSourceFiles(`${packageDir}/src`);
+
+    for (const file of sourceFiles) {
+      const content = await readFile(file, "utf8");
+      // DOM *types* (e.g. HTMLCanvasElement in GameOptions) are compile-time
+      // only; these patterns catch runtime access to browser globals and the
+      // DOM event APIs the input adapter owns.
+      expect(content).not.toMatch(/\bwindow\./);
+      expect(content).not.toMatch(/\bdocument\./);
+      expect(content).not.toMatch(/\baddEventListener\b/);
+      expect(content).not.toMatch(/\bKeyboardEvent\b/);
+      expect(content).not.toMatch(/\bPointerEvent\b/);
+    }
+  });
 });

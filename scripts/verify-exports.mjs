@@ -45,6 +45,14 @@ if (typeof core.Game !== "function") {
 if (typeof core.SceneManager !== "function") {
   throw new Error("@g2w/core does not export SceneManager.");
 }
+if (typeof core.InputState !== "function") {
+  throw new Error("@g2w/core does not export InputState.");
+}
+
+const inputDom = await import(await entryFile("packages/input-dom"));
+if (typeof inputDom.DomInput !== "function") {
+  throw new Error("@g2w/input-dom does not export DomInput.");
+}
 
 const renderer = await import(await entryFile("packages/renderer-pixi"));
 if (typeof renderer.PixiRenderer !== "function") {
@@ -66,4 +74,4 @@ await pixi.dispose().then(
   },
 );
 
-console.log("Package exports verified: @g2w/core, @g2w/renderer-pixi");
+console.log("Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi");

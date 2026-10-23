@@ -1,4 +1,5 @@
-import { Game, type Scene, SceneManager } from "@g2w/core";
+import { Game, InputState, type Scene, SceneManager } from "@g2w/core";
+import { DomInput } from "@g2w/input-dom";
 import { PixiRenderer } from "@g2w/renderer-pixi";
 import { Graphics, Text } from "pixi.js";
 
@@ -24,10 +25,16 @@ function showError(error: unknown): void {
 try {
   const renderer = new PixiRenderer();
 
+  // The input path: a DOM-free InputState from @g2w/core, fed by the browser
+  // adapter from @g2w/input-dom. All game logic below reads input only through
+  // this state — there are no DOM event handlers in game logic.
+  const input = new InputState();
+  const domInput = new DomInput(input, { canvas, keyTarget: window, blurTarget: window });
+
   // PixiJS objects live here, at the adapter boundary: @g2w/core scenes are
   // renderer-agnostic and never touch PixiJS types.
   const title = new Text({
-    text: "g2w scene demo",
+    text: "g2w input demo",
     style: { fontFamily: "system-ui, sans-serif", fontSize: 32, fill: 0xffffff },
   });
   title.anchor.set(0.5);
@@ -41,19 +48,15 @@ try {
   menuHint.position.set(VIEW_WIDTH / 2, VIEW_HEIGHT / 2 + 20);
 
   const playHint = new Text({
-    text: "click to return to the menu",
+    text: "move: WASD/arrows — Esc returns to the menu",
     style: { fontFamily: "system-ui, sans-serif", fontSize: 16, fill: 0xaaccff },
   });
   playHint.anchor.set(0.5);
   playHint.position.set(VIEW_WIDTH / 2, VIEW_HEIGHT - 24);
 
   const square = new Graphics().rect(0, 0, SQUARE_SIZE, SQUARE_SIZE).fill({ color: 0xffd166 });
-
-  // Per-scene frame counters make visible that only the active scene updates.
-  let menuUpdates = 0;
-  let gameplayUpdates = 0;
-  let squareX = 0;
-  let direction = 1;
+  let squareX = (VIEW_WIDTH - SQUARE_SIZE) / 2;
+  let squareY = VIEW_HEIGHT - SQUARE_SIZE - 40;
 
   const menuScene: Scene = {
     init() {},
@@ -61,8 +64,14 @@ try {
       renderer.stage.addChild(title, menuHint);
     },
     update() {
-      menuUpdates += 1;
-      menuHint.text = `click to play — menu updates: ${menuUpdates}`;
+      // Pointer position and button edges come from the framework input state.
+      const pointer = input.hasPointerPosition
+        ? `pointer: ${Math.round(input.pointerX)}, ${Math.round(input.pointerY)}`
+        : "pointer: move over the canvas";
+      menuHint.text = `click to play — ${pointer}`;
+      if (input.wasButtonPressed(0)) {
+        scenes.goTo("gameplay");
+      }
     },
     exit() {
       renderer.stage.removeChild(title, menuHint);
@@ -79,19 +88,42 @@ try {
       renderer.stage.addChild(square, playHint);
     },
     update(deltaTime) {
-      // The square only moves while this scene is active.
-      squareX += SPEED * deltaTime * direction;
-      if (squareX > VIEW_WIDTH - SQUARE_SIZE) {
-        squareX = VIEW_WIDTH - SQUARE_SIZE;
-        direction = -1;
-      } else if (squareX < 0) {
-        squareX = 0;
-        direction = 1;
+      // Movement reads held keys from the framework input state.
+      let moveX = 0;
+      let moveY = 0;
+      if (input.isKeyDown("KeyA") || input.isKeyDown("ArrowLeft")) {
+        moveX -= 1;
       }
+      if (input.isKeyDown("KeyD") || input.isKeyDown("ArrowRight")) {
+        moveX += 1;
+      }
+      if (input.isKeyDown("KeyW") || input.isKeyDown("ArrowUp")) {
+        moveY -= 1;
+      }
+      if (input.isKeyDown("KeyS") || input.isKeyDown("ArrowDown")) {
+        moveY += 1;
+      }
+      squareX = Math.min(
+        Math.max(squareX + moveX * SPEED * deltaTime, 0),
+        VIEW_WIDTH - SQUARE_SIZE,
+      );
+      squareY = Math.min(
+        Math.max(squareY + moveY * SPEED * deltaTime, 0),
+        VIEW_HEIGHT - SQUARE_SIZE,
+      );
       square.x = squareX;
-      square.y = (VIEW_HEIGHT - SQUARE_SIZE) / 2;
-      gameplayUpdates += 1;
-      playHint.text = `click to return to the menu — gameplay updates: ${gameplayUpdates}`;
+      square.y = squareY;
+
+      const heldKeys = [
+        input.isKeyDown("KeyW"),
+        input.isKeyDown("KeyS"),
+        input.isKeyDown("KeyA"),
+        input.isKeyDown("KeyD"),
+      ].filter(Boolean).length;
+      playHint.text = `held keys: ${heldKeys} — Esc returns to the menu`;
+      if (input.wasKeyPressed("Escape")) {
+        scenes.goTo("menu");
+      }
     },
     exit() {
       renderer.stage.removeChild(square, playHint);
@@ -112,28 +144,19 @@ try {
     canvas,
     backgroundColor: "#1099bb",
     resolution: window.devicePixelRatio || 1,
-    // No second loop: the active scene is updated by the existing game loop.
-    onUpdate: (deltaTime) => scenes.update(deltaTime),
-  });
-
-  // Plain DOM events in the example; an input system is out of g2w's scope.
-  canvas.addEventListener("click", () => {
-    // active is null after disposal, which also guards against late clicks.
-    try {
-      if (scenes.active === "menu") {
-        scenes.goTo("gameplay");
-      } else if (scenes.active !== null) {
-        scenes.goTo("menu");
-      }
-    } catch (error: unknown) {
-      // A scene hook failure surfaces on the page instead of only the console.
-      showError(error);
-    }
+    // No second loop: the active scene is updated by the existing game loop,
+    // and the input frame boundary sits right after every consumer.
+    onUpdate: (deltaTime) => {
+      scenes.update(deltaTime);
+      input.endFrame();
+    },
   });
 
   window.addEventListener("pagehide", () => {
-    // Scenes first (they remove their children from the stage), then the game.
+    // Adapter first (no further events reach the state), then scenes (they
+    // remove their children from the stage), then the game.
     try {
+      domInput.dispose();
       scenes.dispose();
     } catch (error: unknown) {
       console.error(error);
@@ -142,6 +165,7 @@ try {
   });
 
   await game.init();
+  domInput.attach();
   scenes.start();
   game.start();
 } catch (error) {

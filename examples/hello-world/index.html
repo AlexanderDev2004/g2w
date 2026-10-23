@@ -3,7 +3,7 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>g2w input demo</title>
+    <title>g2w asset demo</title>
     <style>
       body {
         margin: 0;
@@ -19,11 +19,16 @@
         white-space: pre-wrap;
         max-width: 640px;
       }
+      #loading {
+        color: #aaccff;
+        font-size: 14px;
+      }
     </style>
   </head>
   <body>
     <div>
       <canvas id="game" width="640" height="360"></canvas>
+      <p id="loading" hidden>loading assets…</p>
       <pre id="error" hidden></pre>
     </div>
     <script type="module" src="/src/main.ts"></script>

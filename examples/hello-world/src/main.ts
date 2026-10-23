@@ -1,12 +1,13 @@
 import { Game, InputState, type Scene, SceneManager } from "@g2w/core";
 import { DomInput } from "@g2w/input-dom";
-import { PixiRenderer } from "@g2w/renderer-pixi";
-import { Graphics, Text } from "pixi.js";
+import { createTextureAssetManager, PixiRenderer } from "@g2w/renderer-pixi";
+import { Graphics, Sprite, Text } from "pixi.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 const errorBox = document.querySelector<HTMLPreElement>("#error");
-if (canvas === null || errorBox === null) {
-  throw new Error("hello-world: required DOM elements (#game, #error) are missing.");
+const loadingBox = document.querySelector<HTMLParagraphElement>("#loading");
+if (canvas === null || errorBox === null || loadingBox === null) {
+  throw new Error("hello-world: required DOM elements (#game, #error, #loading) are missing.");
 }
 
 const VIEW_WIDTH = 640;
@@ -31,10 +32,22 @@ try {
   const input = new InputState();
   const domInput = new DomInput(input, { canvas, keyTarget: window, blurTarget: window });
 
+  // The asset path: the app creates and owns one texture asset manager. All
+  // game logic loads through this public API — no direct PixiJS Assets calls.
+  const assets = createTextureAssetManager();
+  const LOGO_URL = "assets/g2w-logo.png";
+  loadingBox.hidden = false;
+  const logo = await assets.load(LOGO_URL);
+  // A repeated request is served from the cache: same manager call, same
+  // texture instance, no second load.
+  const logoFromCache = await assets.load(LOGO_URL);
+  const logoWasCached = logoFromCache === logo;
+  loadingBox.hidden = true;
+
   // PixiJS objects live here, at the adapter boundary: @g2w/core scenes are
   // renderer-agnostic and never touch PixiJS types.
   const title = new Text({
-    text: "g2w input demo",
+    text: "g2w asset demo",
     style: { fontFamily: "system-ui, sans-serif", fontSize: 32, fill: 0xffffff },
   });
   title.anchor.set(0.5);
@@ -58,6 +71,13 @@ try {
   let squareX = (VIEW_WIDTH - SQUARE_SIZE) / 2;
   let squareY = VIEW_HEIGHT - SQUARE_SIZE - 40;
 
+  // The loaded texture is rendered through a sprite. The sprite belongs to
+  // the gameplay scene and is destroyed with it; the texture comes from
+  // PixiJS's shared Assets cache and is never destroyed by the manager, so
+  // the sprite is destroyed without destroying the texture.
+  const logoSprite = new Sprite(logo);
+  logoSprite.position.set(16, VIEW_HEIGHT - logo.height - 16);
+
   const menuScene: Scene = {
     init() {},
     enter() {
@@ -68,7 +88,8 @@ try {
       const pointer = input.hasPointerPosition
         ? `pointer: ${Math.round(input.pointerX)}, ${Math.round(input.pointerY)}`
         : "pointer: move over the canvas";
-      menuHint.text = `click to play — ${pointer}`;
+      const cacheNote = logoWasCached ? "texture cache: hit" : "texture cache: miss";
+      menuHint.text = `click to play — ${pointer} — ${cacheNote}`;
       if (input.wasButtonPressed(0)) {
         scenes.goTo("gameplay");
       }
@@ -85,7 +106,7 @@ try {
   const gameplayScene: Scene = {
     init() {},
     enter() {
-      renderer.stage.addChild(square, playHint);
+      renderer.stage.addChild(square, playHint, logoSprite);
     },
     update(deltaTime) {
       // Movement reads held keys from the framework input state.
@@ -126,11 +147,14 @@ try {
       }
     },
     exit() {
-      renderer.stage.removeChild(square, playHint);
+      renderer.stage.removeChild(square, playHint, logoSprite);
     },
     dispose() {
+      // Destroy the sprite, not its texture: the texture is owned by the
+      // asset manager and released by assets.dispose() during teardown.
       square.destroy();
       playHint.destroy();
+      logoSprite.destroy();
     },
   };
 
@@ -154,14 +178,20 @@ try {
 
   window.addEventListener("pagehide", () => {
     // Adapter first (no further events reach the state), then scenes (they
-    // remove their children from the stage), then the game.
+    // destroy their sprites and remove their children from the stage), then
+    // the game (releases the renderer), and finally the asset manager (it
+    // releases its cache; the textures themselves are never destroyed by the
+    // manager — the page unload reclaims them).
     try {
       domInput.dispose();
       scenes.dispose();
     } catch (error: unknown) {
       console.error(error);
     }
-    void game.dispose().catch((error: unknown) => console.error(error));
+    void game
+      .dispose()
+      .then(() => assets.dispose())
+      .catch((error: unknown) => console.error(error));
   });
 
   await game.init();

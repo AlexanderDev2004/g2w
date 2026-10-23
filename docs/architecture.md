@@ -16,13 +16,14 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `Game` / `GameOptions` / `GameState` — the runtime that owns a renderer and a frame loop (see below).
 - `Scene` / `SceneManager` / `SceneManagerOptions` / `SceneError` — the renderer-agnostic scene system (see below).
 - `InputState` — the DOM-free keyboard and pointer state machine (see below).
+- `AssetManager` / `AssetLoader` / `AssetManagerOptions` / `AssetError` — the renderer-agnostic asset cache (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
 Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
 
 ### `@g2w/renderer-pixi`
 
-Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. This is a minimal adapter, not a complete renderer: no scene graph API, sprites, or asset handling.
+Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. `createTextureAssetManager()` returns a core `AssetManager<Texture>` that loads textures by URL through PixiJS's `Assets` and destroys them exactly once on disposal (see below). This is a minimal adapter, not a complete renderer: no scene graph API or sprites beyond the texture loader.
 
 ### `@g2w/input-dom`
 
@@ -64,7 +65,7 @@ scenes.start();
 game.start();
 ```
 
-The `Scene` contract is a plain object with optional, synchronous hooks: `init()`, `enter()`, `update(deltaTime)`, `exit()`, `dispose()`. There is no context parameter and no async-hook support — scenes do not load assets yet, so asynchronous setup has no lifecycle requirement; when one appears, the contract can grow without breaking this one. `deltaTime` is in seconds, forwarded unchanged from the game loop (which already clamps it).
+The `Scene` contract is a plain object with optional, synchronous hooks: `init()`, `enter()`, `update(deltaTime)`, `exit()`, `dispose()`. There is no context parameter and no async-hook support — scenes do not load assets themselves. Games that use assets pass an `AssetManager` to their scenes through plain composition (a closure or constructor argument), so asynchronous setup happens before `game.start()` and scene hooks stay synchronous; when an async lifecycle need appears, the contract can grow without breaking this one. `deltaTime` is in seconds, forwarded unchanged from the game loop (which already clamps it).
 
 Policy highlights (each is covered by tests in `packages/core/test/scene-manager.test.ts`):
 - **Scenes are reusable instances.** `init` runs at most once per scene instance, lazily on first activation; a failed `init` may be retried, and `enter` never runs unless `init` completed. `enter`/`exit` pair on every activation and deactivation.
@@ -88,6 +89,36 @@ Frame semantics (all covered by tests in `packages/core/test/input.test.ts`):
 - Key identifiers are standard `KeyboardEvent.code` strings (`"KeyW"`, `"ArrowLeft"`, `"Space"`, ...); pointer buttons are numbered as in `MouseEvent.button` (0 = primary).
 
 Intentionally unsupported (documented scope, not omissions by accident): gamepad, touch gestures, action mapping or rebinding, input recording, drag-and-drop, and preventing default browser behavior from the framework.
+
+### `AssetManager` — assets, caching, and ownership
+
+`AssetManager` (in core) is a minimal, dependency-free asset cache. Keys are opaque strings; values are whatever an injected `AssetLoader` returns, so the API is generic and core never learns about PixiJS, URLs, or file formats:
+
+```ts
+const textures = new AssetManager<Texture>({
+  load: (url) => pixiAssetsLoad(url), // supplied by the caller or an adapter
+  disposeAsset: (texture) => texture.destroy(true), // optional: manager-owned resources
+});
+const logo = await textures.load("logo.png");
+```
+
+Semantics (all covered by tests in `packages/core/test/asset-manager.test.ts`):
+- **Caching:** the first `load(key)` invokes the loader; every later request returns the same promise — and therefore the same value — without invoking the loader again. Different keys load independently.
+- **Concurrent requests deduplicate:** requests made while a load is in flight share that one load.
+- **Failure is retryable, never poisonous:** a rejected load drops its cache entry, so a later `load(key)` invokes the loader again. Loader errors propagate unchanged (never wrapped); every concurrent requester of a failing key observes the same rejection.
+- **Disposal is terminal and idempotent:** repeated `dispose()` calls return the first disposal's promise. `load` on a disposed manager throws `AssetError` immediately, even while a disposal is still in flight.
+- **In-flight loads during disposal** still settle for their callers (the caller's promise is not altered), but after `dispose()` resolves every owned value has been cleaned up: values that fulfilled after disposal was requested are disposed and never enter the cache. Callers of such loads receive a disposed value and must not use it.
+- **Ownership is explicit, not automatic:** with a `disposeAsset`, the manager owns its resources — it destroys each distinct value exactly once, and a value shared between keys (identity) is destroyed only on its first cleanup, so shared resources are never destroyed twice. Without a `disposeAsset`, the manager merely caches caller-owned values and disposal clears the cache without touching them. The manager never calls resource-specific methods (`destroy()`, `close()`, ...) on values that were not explicitly handed a disposer.
+- **Cleanup is best-effort:** one disposer failure does not prevent the remaining cleanups; the first error is rethrown as-is, or as an `AggregateError` when several fail, after all attempts complete.
+
+Intentionally unsupported: automatic unloading on scene transitions, reference counting, and resource dependency graphs. The caller owns the manager, decides when it lives and dies, and passes it to scenes through plain composition — there is no scene context or injection framework for assets.
+
+### PixiJS texture loading — `createTextureAssetManager()`
+
+`@g2w/renderer-pixi` adapts the core contract to PixiJS 8: `createTextureAssetManager()` returns an `AssetManager<Texture>` whose loader is PixiJS's `Assets.load` (injectable for tests). Keys are URLs (or PixiJS resolver aliases); because PixiJS's shared `Assets` cache resolves every request for the same URL to one texture instance, two keys — or two managers — referring to the same URL share one texture. Ownership rules:
+- **The adapter never destroys textures.** `Assets.load` stores every texture in PixiJS's global shared cache, where any other manager, `Sprite.from`, or subsystem can reach the same instance, and PixiJS offers no supported way to establish exclusive ownership of a cached texture (`Assets.unload` destroys the texture no matter who else still holds it — it is URL-scoped, not ownership-scoped). Destroying on manager disposal could therefore invalidate textures other code still uses, so the adapter leaves the value caller-owned: `dispose()` releases the manager's own cache entries and the textures stay valid.
+- **Texture lifetime is the session.** Textures remain in PixiJS's cache until the page unloads, which reclaims all GPU and CPU memory. This is a deliberate trade-off: a long-lived single-page game that loads and abandons many large textures would accumulate them. When an application knows — outside the framework — that nothing else uses a texture any more, it can call PixiJS's `Assets.unload(url)` explicitly; that decision belongs to the application, not the manager.
+- **Scenes still destroy their display objects, never their textures.** `sprite.destroy()` does not touch the texture by default, which matches this policy; the demo's teardown order is: adapter → scenes → game → assets (the last step releases only the manager itself).
 
 ## Dependency direction
 
@@ -117,6 +148,7 @@ Why core stays renderer-agnostic:
 
 - `packages/core/test/architecture.test.ts` asserts core declares no runtime dependencies, no `pixi.js` dependency in any group, no renderer imports in its source, and no runtime access to browser globals or DOM event APIs (`window`, `document`, `addEventListener`, `KeyboardEvent`, `PointerEvent`) in its source.
 - `packages/renderer-pixi/test/pixi-renderer.test.ts` asserts the adapter declares `@g2w/core` as a dependency and that core does not depend back on the adapter.
+- `packages/renderer-pixi/test/assets.test.ts` asserts the texture asset manager composes with the core `AssetManager` and that shared textures are destroyed exactly once.
 - `packages/input-dom/test/package.test.ts` asserts the DOM input adapter declares `@g2w/core` as a dependency and composes with the core `InputState`.
 - `pnpm verify:exports` (also run in CI) loads the built packages through their real entry points.
 
@@ -131,17 +163,20 @@ Why core stays renderer-agnostic:
 
 ## Current vs provisional
 
-Current (MVP 1C):
+Current (MVP 1D):
 - The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
 - The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
 - The `Scene` contract and `SceneManager` lifecycle, transition, error, and disposal semantics described above.
 - The `InputState` input state machine and its frame, focus-loss, and pointer-leave semantics described above, with the `@g2w/input-dom` browser adapter.
+- The `AssetManager` cache/dedup/ownership semantics and the `@g2w/renderer-pixi` texture loader described above.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
-- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter's provisional `stage` and keeps all PixiJS objects at the example boundary.
+- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter's provisional `stage`, loads its texture through the adapter's asset API, and keeps all PixiJS objects at the example boundary.
 
 Provisional (expect to change in later MVPs):
 - The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
 - The PixiJS adapter's internals; it will be reworked as core grows more rendering features.
 - The `stage` accessor on the adapter: it leaks a PixiJS `Container` type to adapter consumers. Acceptable while the adapter is the only way to draw; a renderer-agnostic display API would replace it.
+- The asset system's single-loader contract: one `AssetManager` instance handles one value type; richer manifests, bulk loading, and per-type loaders are future work.
+- The texture loader's non-destructive policy: textures from PixiJS's shared `Assets` cache live for the session (no manager-driven destruction); if texture churn ever matters for a real game, cache eviction or explicit `Assets.unload` guidance can be added without breaking the current API.
 - The test aliasing setup; it may move to package-level configs when the workspace grows.

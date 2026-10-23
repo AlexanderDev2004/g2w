@@ -48,6 +48,12 @@ if (typeof core.SceneManager !== "function") {
 if (typeof core.InputState !== "function") {
   throw new Error("@g2w/core does not export InputState.");
 }
+if (typeof core.AssetManager !== "function") {
+  throw new Error("@g2w/core does not export AssetManager.");
+}
+if (typeof core.AssetError !== "function") {
+  throw new Error("@g2w/core does not export AssetError.");
+}
 
 const inputDom = await import(await entryFile("packages/input-dom"));
 if (typeof inputDom.DomInput !== "function") {
@@ -57,6 +63,46 @@ if (typeof inputDom.DomInput !== "function") {
 const renderer = await import(await entryFile("packages/renderer-pixi"));
 if (typeof renderer.PixiRenderer !== "function") {
   throw new Error("@g2w/renderer-pixi does not export PixiRenderer.");
+}
+if (typeof renderer.createTextureAssetManager !== "function") {
+  throw new Error("@g2w/renderer-pixi does not export createTextureAssetManager.");
+}
+
+// Exercise the asset pipeline end to end through the real entry points, with
+// an injected loader so no network or browser is needed. The fake mimics the
+// texture surface (destroy()) so the test proves the adapter never calls it.
+let fakeDestroyed = false;
+const assets = renderer.createTextureAssetManager({
+  load: async (key) => ({
+    key,
+    destroy() {
+      fakeDestroyed = true;
+    },
+  }),
+});
+const texture = await assets.load("fake/logo.png");
+if (texture.key !== "fake/logo.png") {
+  throw new Error("@g2w/renderer-pixi: createTextureAssetManager did not return the loaded value.");
+}
+if ((await assets.load("fake/logo.png")) !== texture) {
+  throw new Error("@g2w/renderer-pixi: repeated asset loads did not reuse the cached value.");
+}
+await assets.dispose();
+if (assets.disposed !== true) {
+  throw new Error("@g2w/renderer-pixi: asset manager disposal did not complete.");
+}
+if (fakeDestroyed) {
+  throw new Error(
+    "@g2w/renderer-pixi: manager disposal destroyed a texture from the shared Assets cache.",
+  );
+}
+try {
+  assets.load("fake/logo.png");
+  throw new Error("Loading from a disposed asset manager should throw.");
+} catch (error) {
+  if (!(error instanceof core.AssetError)) {
+    throw new Error("Loading from a disposed asset manager should throw AssetError.");
+  }
 }
 
 const pixi = new renderer.PixiRenderer();
@@ -74,4 +120,6 @@ await pixi.dispose().then(
   },
 );
 
-console.log("Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi");
+console.log(
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi (incl. asset API)",
+);

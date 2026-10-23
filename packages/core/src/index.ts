@@ -1,3 +1,6 @@
+export { AssetError } from "./asset-error.js";
+export type { AssetLoader, AssetManagerOptions } from "./asset-manager.js";
+export { AssetManager } from "./asset-manager.js";
 export type { FrameRequestCallback, FrameScheduler } from "./frame-scheduler.js";
 export type { GameOptions, GameState } from "./game.js";
 export { Game } from "./game.js";

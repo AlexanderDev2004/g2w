@@ -4,12 +4,12 @@ Guidance for AI coding agents (Amp and others) working in this repository.
 
 ## Project
 
-**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **MVP 1D — asset management**: monorepo, renderer contract, `Game` lifecycle and frame loop, renderer-agnostic `SceneManager`, DOM-free `InputState` with the `@g2w/input-dom` browser adapter, a generic `AssetManager` in core with the `@g2w/renderer-pixi` texture loader, minimal PixiJS adapter, a Vite browser demo, tests, CI, and docs.
+**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **MVP 1E — 2D transform & sprite API**: monorepo, renderer contract, `Game` lifecycle and frame loop, renderer-agnostic `SceneManager`, DOM-free `InputState` with the `@g2w/input-dom` browser adapter, a generic `AssetManager` in core with the `@g2w/renderer-pixi` texture loader, the `Transform2D`/`Sprite2D` model in core with the adapter's `createSpriteView`, minimal PixiJS adapter, a Vite browser demo, tests, CI, and docs.
 
 ## Architecture boundaries
 
-- `@g2w/core` (packages/core) owns the renderer-agnostic contract, the `Game` runtime, the `SceneManager`, the DOM-free `InputState`, and the generic `AssetManager`. It must never import a rendering technology or touch browser globals/DOM events at runtime, and must keep zero runtime dependencies.
-- `@g2w/renderer-pixi` (packages/renderer-pixi) implements the renderer contract on top of PixiJS and adapts texture loading to the core `AssetManager` (`createTextureAssetManager`). It may depend on `@g2w/core` and PixiJS. The dependency must never point the other way.
+- `@g2w/core` (packages/core) owns the renderer-agnostic contract, the `Game` runtime, the `SceneManager`, the DOM-free `InputState`, the generic `AssetManager`, and the `Transform2D`/`Sprite2D` model. It must never import a rendering technology or touch browser globals/DOM events at runtime, and must keep zero runtime dependencies.
+- `@g2w/renderer-pixi` (packages/renderer-pixi) implements the renderer contract on top of PixiJS and adapts texture loading (`createTextureAssetManager`) and sprite rendering (`createSpriteView`) to the core model. It may depend on `@g2w/core` and PixiJS. The dependency must never point the other way.
 - `@g2w/input-dom` (packages/input-dom) adapts real browser events onto the core `InputState`. It may depend on `@g2w/core` only; all DOM event handling lives here, never in core.
 - `examples/hello-world` consumes only the public exports of both packages through Vite; it must not bypass g2w by creating a PixiJS `Application` directly.
 - Tests in `packages/core/test/architecture.test.ts`, `packages/core/test/game.test.ts`, `packages/core/test/scene-manager.test.ts`, `packages/core/test/input.test.ts`, `packages/core/test/asset-manager.test.ts`, `packages/input-dom/test/`, and `packages/renderer-pixi/test/` enforce these boundaries — keep them passing and extend them when adding packages.

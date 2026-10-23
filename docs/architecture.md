@@ -17,13 +17,14 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `Scene` / `SceneManager` / `SceneManagerOptions` / `SceneError` — the renderer-agnostic scene system (see below).
 - `InputState` — the DOM-free keyboard and pointer state machine (see below).
 - `AssetManager` / `AssetLoader` / `AssetManagerOptions` / `AssetError` — the renderer-agnostic asset cache (see below).
+- `Transform2D` / `Sprite2D` / `Sprite2DInit` / `Transform2DInit` — the renderer-agnostic 2D transform and sprite model (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
 Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
 
 ### `@g2w/renderer-pixi`
 
-Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. `createTextureAssetManager()` returns a core `AssetManager<Texture>` that loads textures by URL through PixiJS's `Assets` and destroys them exactly once on disposal (see below). This is a minimal adapter, not a complete renderer: no scene graph API or sprites beyond the texture loader.
+Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. `createTextureAssetManager()` returns a core `AssetManager<Texture>` that loads textures by URL through PixiJS's `Assets` and is deliberately non-destructive on disposal (see below). `createSpriteView()` turns a core `Sprite2D` model into a PixiJS sprite attached to the stage and synchronizes it through an explicit `sync()` (see below). This is a minimal adapter, not a complete renderer: no scene graph API beyond sprites and the texture loader.
 
 ### `@g2w/input-dom`
 
@@ -120,6 +121,20 @@ Intentionally unsupported: automatic unloading on scene transitions, reference c
 - **Texture lifetime is the session.** Textures remain in PixiJS's cache until the page unloads, which reclaims all GPU and CPU memory. This is a deliberate trade-off: a long-lived single-page game that loads and abandons many large textures would accumulate them. When an application knows — outside the framework — that nothing else uses a texture any more, it can call PixiJS's `Assets.unload(url)` explicitly; that decision belongs to the application, not the manager.
 - **Scenes still destroy their display objects, never their textures.** `sprite.destroy()` does not touch the texture by default, which matches this policy; the demo's teardown order is: adapter → scenes → game → assets (the last step releases only the manager itself).
 
+### `Sprite2D` / `Transform2D` — the 2D sprite model, and `createSpriteView()`
+
+Core provides a minimal, renderer-independent 2D sprite model (see `packages/core/test/sprite.test.ts`):
+- **`Transform2D`** is a mutable value: `x`/`y` position in logical pixels (default `0`), `rotation` in **radians** (default `0`; direction follows the renderer's screen space — for PixiJS, positive values rotate clockwise because the y axis points down), and `scaleX`/`scaleY` multipliers where `1` means natural scale (default `1`). Plain mutable numbers — no setters, validation, or observers.
+- **`Sprite2D<TTexture>`** holds a typed texture handle (generic — core never inspects or destroys it), a `Transform2D` (shared when supplied, fresh when omitted), plus the visual properties the current demos need: `visible` (default `true`) and `alpha` (default `1`). It is plain mutable data; mutating it never touches a renderer.
+
+`@g2w/renderer-pixi` projects the model onto the stage: **`createSpriteView({ sprite, renderer })`** creates one PixiJS `Sprite` for the model, applies the model state immediately, and attaches it to the renderer's stage. The view exposes:
+- **`sync()`** — applies the current model state (position, rotation, scale, visibility, alpha) to the display object. Called explicitly, typically once per frame at the end of the scene update, right where `input.endFrame()` sits — the existing Game loop is the only driver; there is no second loop, ticker, or subscription. Changes without a `sync()` have no effect until the next sync.
+- **`dispose()`** — removes the display object from its parent and destroys it. Idempotent and terminal. It **never destroys the texture** (textures live in the shared `Assets` cache; see the asset section) and never touches the stage or sibling display objects. `sync()` after disposal throws `SpriteViewError`.
+
+Ownership: the caller owns the **model**; whoever creates a **view** owns it and disposes it (typically the owning scene's `dispose()` hook); the **texture** is owned by nobody and lives for the session. Because `enter`/`exit` pair per activation, scenes that toggle `visible` through the model (the demo's approach) reuse one view across transitions without duplicating display objects; a scene that instead creates views in `enter()` must dispose them in `exit()`.
+
+Intentionally unsupported: parent/child transform hierarchies, anchors/pivots, z-ordering, tint, blend modes, animation timelines, entity components, and renderer-independent scene graphs.
+
 ## Dependency direction
 
 The single most important rule: **core must never depend on a renderer; renderers always depend on core.**
@@ -163,15 +178,16 @@ Why core stays renderer-agnostic:
 
 ## Current vs provisional
 
-Current (MVP 1D):
+Current (MVP 1E):
 - The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
 - The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
 - The `Scene` contract and `SceneManager` lifecycle, transition, error, and disposal semantics described above.
 - The `InputState` input state machine and its frame, focus-loss, and pointer-leave semantics described above, with the `@g2w/input-dom` browser adapter.
 - The `AssetManager` cache/dedup/ownership semantics and the `@g2w/renderer-pixi` texture loader described above.
+- The `Transform2D`/`Sprite2D` model and the `@g2w/renderer-pixi` sprite view described above.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
-- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter's provisional `stage`, loads its texture through the adapter's asset API, and keeps all PixiJS objects at the example boundary.
+- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter, loads its texture through the adapter's asset API, drives its logo sprite through the core sprite model and `sync()`, and keeps all other PixiJS objects at the example boundary.
 
 Provisional (expect to change in later MVPs):
 - The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
@@ -179,4 +195,5 @@ Provisional (expect to change in later MVPs):
 - The `stage` accessor on the adapter: it leaks a PixiJS `Container` type to adapter consumers. Acceptable while the adapter is the only way to draw; a renderer-agnostic display API would replace it.
 - The asset system's single-loader contract: one `AssetManager` instance handles one value type; richer manifests, bulk loading, and per-type loaders are future work.
 - The texture loader's non-destructive policy: textures from PixiJS's shared `Assets` cache live for the session (no manager-driven destruction); if texture churn ever matters for a real game, cache eviction or explicit `Assets.unload` guidance can be added without breaking the current API.
+- The sprite model's minimal scope: `Sprite2D` covers position/rotation/scale/visible/alpha; anchors, z-ordering, tint, hierarchies, and more are expected to grow the model later, and the `stage` accessor may be superseded by a broader renderer-agnostic display API.
 - The test aliasing setup; it may move to package-level configs when the workspace grows.

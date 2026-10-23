@@ -1,7 +1,7 @@
-import { Game, InputState, type Scene, SceneManager } from "@g2w/core";
+import { Game, InputState, type Scene, SceneManager, Sprite2D, Transform2D } from "@g2w/core";
 import { DomInput } from "@g2w/input-dom";
-import { createTextureAssetManager, PixiRenderer } from "@g2w/renderer-pixi";
-import { Graphics, Sprite, Text } from "pixi.js";
+import { createSpriteView, createTextureAssetManager, PixiRenderer } from "@g2w/renderer-pixi";
+import { Graphics, Text } from "pixi.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 const errorBox = document.querySelector<HTMLPreElement>("#error");
@@ -71,17 +71,40 @@ try {
   let squareX = (VIEW_WIDTH - SQUARE_SIZE) / 2;
   let squareY = VIEW_HEIGHT - SQUARE_SIZE - 40;
 
-  // The loaded texture is rendered through a sprite. The sprite belongs to
-  // the gameplay scene and is destroyed with it; the texture comes from
-  // PixiJS's shared Assets cache and is never destroyed by the manager, so
-  // the sprite is destroyed without destroying the texture.
-  const logoSprite = new Sprite(logo);
-  logoSprite.position.set(16, VIEW_HEIGHT - logo.height - 16);
+  // The renderer must be initialized before any view can attach to its
+  // stage: createSpriteView reads renderer.stage, which throws before init.
+  const game = new Game({
+    renderer,
+    canvas,
+    backgroundColor: "#1099bb",
+    resolution: window.devicePixelRatio || 1,
+    // No second loop: the active scene is updated by the existing game loop,
+    // and the input frame boundary sits right after every consumer.
+    onUpdate: (deltaTime) => {
+      scenes.update(deltaTime);
+      input.endFrame();
+    },
+  });
+  await game.init();
+
+  // The loaded texture is rendered through the renderer-agnostic sprite API:
+  // a core Sprite2D model plus a renderer-created view. Game logic mutates
+  // the model and calls view.sync(); it never touches PixiJS objects. The
+  // view owns its display object only — the shared texture is never
+  // destroyed by view disposal.
+  const logoModel = new Sprite2D({
+    texture: logo,
+    transform: new Transform2D({ x: 16, y: VIEW_HEIGHT - logo.height - 16 }),
+  });
+  const logoView = createSpriteView({ sprite: logoModel, renderer });
 
   const menuScene: Scene = {
     init() {},
     enter() {
       renderer.stage.addChild(title, menuHint);
+      // The logo lives in the gameplay scene; hide it through the model.
+      logoModel.visible = false;
+      logoView.sync();
     },
     update() {
       // Pointer position and button edges come from the framework input state.
@@ -106,7 +129,9 @@ try {
   const gameplayScene: Scene = {
     init() {},
     enter() {
-      renderer.stage.addChild(square, playHint, logoSprite);
+      renderer.stage.addChild(square, playHint);
+      logoModel.visible = true;
+      logoView.sync();
     },
     update(deltaTime) {
       // Movement reads held keys from the framework input state.
@@ -141,39 +166,38 @@ try {
         input.isKeyDown("KeyA"),
         input.isKeyDown("KeyD"),
       ].filter(Boolean).length;
+
+      // The logo sprite is driven entirely through the core sprite model:
+      // rotation accumulates with deltaTime (radians per second) and the
+      // scale pulses between 1 and 1.25. One sync applies everything.
+      logoModel.transform.rotation += deltaTime * 1.5;
+      const pulse = 1 + 0.125 * Math.sin(performance.now() / 400);
+      logoModel.transform.scaleX = pulse;
+      logoModel.transform.scaleY = pulse;
+      logoView.sync();
+
       playHint.text = `held keys: ${heldKeys} — Esc returns to the menu`;
       if (input.wasKeyPressed("Escape")) {
         scenes.goTo("menu");
       }
     },
     exit() {
-      renderer.stage.removeChild(square, playHint, logoSprite);
+      renderer.stage.removeChild(square, playHint);
+      logoModel.visible = false;
+      logoView.sync();
     },
     dispose() {
-      // Destroy the sprite, not its texture: the texture is owned by the
-      // asset manager and released by assets.dispose() during teardown.
+      // Destroy the scene's display objects; the sprite view removes and
+      // destroys only its own display object — never the shared texture.
       square.destroy();
       playHint.destroy();
-      logoSprite.destroy();
+      logoView.dispose();
     },
   };
 
   const scenes = new SceneManager({
     scenes: { menu: menuScene, gameplay: gameplayScene },
     initial: "menu",
-  });
-
-  const game = new Game({
-    renderer,
-    canvas,
-    backgroundColor: "#1099bb",
-    resolution: window.devicePixelRatio || 1,
-    // No second loop: the active scene is updated by the existing game loop,
-    // and the input frame boundary sits right after every consumer.
-    onUpdate: (deltaTime) => {
-      scenes.update(deltaTime);
-      input.endFrame();
-    },
   });
 
   window.addEventListener("pagehide", () => {
@@ -194,7 +218,6 @@ try {
       .catch((error: unknown) => console.error(error));
   });
 
-  await game.init();
   domInput.attach();
   scenes.start();
   game.start();

@@ -54,6 +54,12 @@ if (typeof core.AssetManager !== "function") {
 if (typeof core.AssetError !== "function") {
   throw new Error("@g2w/core does not export AssetError.");
 }
+if (typeof core.Transform2D !== "function") {
+  throw new Error("@g2w/core does not export Transform2D.");
+}
+if (typeof core.Sprite2D !== "function") {
+  throw new Error("@g2w/core does not export Sprite2D.");
+}
 
 const inputDom = await import(await entryFile("packages/input-dom"));
 if (typeof inputDom.DomInput !== "function") {
@@ -66,6 +72,48 @@ if (typeof renderer.PixiRenderer !== "function") {
 }
 if (typeof renderer.createTextureAssetManager !== "function") {
   throw new Error("@g2w/renderer-pixi does not export createTextureAssetManager.");
+}
+if (typeof renderer.createSpriteView !== "function") {
+  throw new Error("@g2w/renderer-pixi does not export createSpriteView.");
+}
+
+// Exercise the sprite model -> view pipeline through the real entry points.
+// The fake texture handle proves the core model and the view creation do not
+// require a PixiJS Texture object (nothing renders in Node).
+const model = new core.Sprite2D({
+  texture: "fake-handle",
+  transform: new core.Transform2D({ x: 10, y: 20 }),
+});
+const spriteStage = {
+  children: [],
+  addChild(child) {
+    child.parent = this;
+    this.children.push(child);
+    return child;
+  },
+  // PixiJS Container.removeChild is what Sprite#removeFromParent() delegates to.
+  removeChild(child) {
+    const index = this.children.indexOf(child);
+    if (index !== -1) {
+      this.children.splice(index, 1);
+    }
+    child.parent = null;
+    return child;
+  },
+};
+const view = renderer.createSpriteView({ sprite: model, renderer: { stage: spriteStage } });
+if (spriteStage.children.length !== 1) {
+  throw new Error("@g2w/renderer-pixi: createSpriteView did not attach one display object.");
+}
+model.transform.x = 30;
+view.sync();
+const spriteDisplay = spriteStage.children[0];
+if (spriteDisplay.x !== 30 || spriteDisplay.y !== 20) {
+  throw new Error("@g2w/renderer-pixi: sync did not apply the model transform.");
+}
+view.dispose();
+if (!view.disposed || spriteStage.children.length !== 0) {
+  throw new Error("@g2w/renderer-pixi: sprite view disposal did not detach the display object.");
 }
 
 // Exercise the asset pipeline end to end through the real entry points, with
@@ -121,5 +169,5 @@ await pixi.dispose().then(
 );
 
 console.log(
-  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi (incl. asset API)",
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi (incl. asset + sprite API)",
 );

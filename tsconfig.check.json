@@ -1,0 +1,13 @@
+{
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "types": ["node"],
+    "baseUrl": ".",
+    "paths": {
+      "@g2w/core": ["packages/core/src/index.ts"],
+      "@g2w/renderer-pixi": ["packages/renderer-pixi/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "examples/*/src/**/*.ts"]
+}

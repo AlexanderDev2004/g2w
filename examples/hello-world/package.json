@@ -1,0 +1,10 @@
+{
+  "name": "@g2w/example-hello-world",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Minimal g2w foundation example: the renderer contract with a fake renderer.",
+  "dependencies": {
+    "@g2w/core": "workspace:*"
+  }
+}

@@ -1,0 +1,28 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+*.tsbuildinfo
+
+# Test output
+coverage/
+
+# Environment files
+.env
+.env.*
+!.env.example
+
+# Editor and OS artifacts
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+
+# pnpm-extracted agent skills from dependencies
+.agents/skills/pnpm-*

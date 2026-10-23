@@ -1,0 +1,24 @@
+{
+  "name": "@g2w/core",
+  "version": "0.1.0",
+  "description": "Renderer-agnostic core contracts for the g2w game framework.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

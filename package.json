@@ -1,0 +1,25 @@
+{
+  "name": "g2w",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "g2w (Game to Website) - a TypeScript-first framework for building and shipping web games.",
+  "packageManager": "pnpm@12.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "tsc -b",
+    "check": "biome check .",
+    "format": "biome format --write .",
+    "test": "vitest run",
+    "typecheck": "tsc -p tsconfig.check.json --noEmit",
+    "verify:exports": "node scripts/verify-exports.mjs"
+  },
+  "devDependencies": {
+    "@biomejs/biome": "^2.6.2",
+    "@types/node": "^22.20.5",
+    "typescript": "^5.9.3",
+    "vitest": "^4.0.16"
+  }
+}

@@ -4,3 +4,7 @@ export { Game } from "./game.js";
 export { GameError } from "./game-error.js";
 export type { Renderer, RendererCapabilities, RendererInitOptions } from "./renderer.js";
 export { RendererError } from "./renderer-error.js";
+export type { Scene } from "./scene.js";
+export { SceneError } from "./scene-error.js";
+export type { SceneManagerOptions } from "./scene-manager.js";
+export { SceneManager } from "./scene-manager.js";

@@ -1,6 +1,6 @@
 # hello-world example
 
-A minimal g2w browser demo: the `Game` runtime from `@g2w/core` drives a `PixiRenderer` from `@g2w/renderer-pixi` through the frame loop, animating a yellow square across a blue canvas. This is a real Vite application — it uses only the public exports of the workspace packages.
+A minimal g2w browser demo showing the **scene system**: the `Game` runtime from `@g2w/core` drives a `PixiRenderer` from `@g2w/renderer-pixi` through the frame loop, and a `SceneManager` switches between a **menu** scene and a **gameplay** scene. This is a real Vite application — it uses only the public exports of the workspace packages.
 
 ## Run it
 
@@ -16,8 +16,13 @@ Then open the printed local URL (for example `http://localhost:5173/`) in a brow
 ## What it demonstrates
 
 - `new Game({ renderer, canvas, onUpdate })` — constructing the runtime with the PixiJS adapter and a canvas.
-- `await game.init()` — asynchronous renderer initialization (PixiJS 8 lifecycle).
-- `game.start()` — the frame loop: `onUpdate(deltaTime)` runs each frame with the elapsed time in seconds, then the renderer renders.
-- `game.dispose()` on page teardown (`pagehide`) — the loop stops and the renderer is disposed.
+- `new SceneManager({ scenes, initial: "menu" })` — registering two scenes and starting with the menu.
+- `onUpdate: (dt) => scenes.update(dt)` — the active scene is updated by the existing game loop; there is no second loop.
+- `scenes.goTo("gameplay")` / `scenes.goTo("menu")` — real transitions on canvas click: the previous scene exits, the next one enters, and only the active scene keeps updating.
+- Per-scene update counters on screen — the counters of the inactive scene stay frozen, showing that only the active scene receives updates.
+- `await game.init()`, `scenes.start()`, `game.start()` — startup order: renderer first, then scenes, then the loop.
+- `scenes.dispose()` then `game.dispose()` on page teardown (`pagehide`) — scenes release their PixiJS objects before the renderer is destroyed.
+
+PixiJS objects (texts, graphics) are created in this example, at the adapter boundary: core scenes are renderer-agnostic and never touch PixiJS types. Click handling is a plain DOM event listener; an input system is out of g2w's scope.
 
 If the game cannot start, the error is displayed on the page instead of failing silently.

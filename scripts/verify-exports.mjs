@@ -42,6 +42,9 @@ if (typeof core.RendererError !== "function") {
 if (typeof core.Game !== "function") {
   throw new Error("@g2w/core does not export Game.");
 }
+if (typeof core.SceneManager !== "function") {
+  throw new Error("@g2w/core does not export SceneManager.");
+}
 
 const renderer = await import(await entryFile("packages/renderer-pixi"));
 if (typeof renderer.PixiRenderer !== "function") {

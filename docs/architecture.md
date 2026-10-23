@@ -14,9 +14,10 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `RendererInitOptions` — canvas, optional background color, optional resolution.
 - `RendererError` — thrown for invalid renderer lifecycle usage.
 - `Game` / `GameOptions` / `GameState` — the runtime that owns a renderer and a frame loop (see below).
+- `Scene` / `SceneManager` / `SceneManagerOptions` / `SceneError` — the renderer-agnostic scene system (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
-Core has **zero runtime dependencies** and **no rendering technology imports**. It will grow to own scenes and other framework services, but every rendering capability stays behind the contract.
+Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
 
 ### `@g2w/renderer-pixi`
 
@@ -45,6 +46,29 @@ Policy highlights (each is covered by tests in `packages/core/test/game.test.ts`
 - A throw from `onUpdate` is fatal to the loop: the pending frame is cancelled, the state becomes `stopped`, and the error is rethrown to the scheduler — never swallowed.
 
 The scheduling mechanism is isolated behind the `FrameScheduler` interface (browser-only `requestAnimationFrame` code lives in its own module), so core lifecycle tests run in plain Node with a deterministic fake scheduler and never need a browser or GPU.
+
+### `SceneManager` — scenes and transitions
+
+`SceneManager` (in core) owns a fixed set of named, reusable scenes and updates only the active one. It runs no frame loop of its own: applications compose it with `Game` by driving it from the game's `onUpdate` callback, so there is exactly one loop and the scene update happens before each render, like any other update logic.
+
+```ts
+const scenes = new SceneManager({ scenes: { menu, gameplay }, initial: "menu" });
+const game = new Game({ renderer, canvas, onUpdate: (dt) => scenes.update(dt) });
+await game.init();
+scenes.start();
+game.start();
+```
+
+The `Scene` contract is a plain object with optional, synchronous hooks: `init()`, `enter()`, `update(deltaTime)`, `exit()`, `dispose()`. There is no context parameter and no async-hook support — scenes do not load assets yet, so asynchronous setup has no lifecycle requirement; when one appears, the contract can grow without breaking this one. `deltaTime` is in seconds, forwarded unchanged from the game loop (which already clamps it).
+
+Policy highlights (each is covered by tests in `packages/core/test/scene-manager.test.ts`):
+- **Scenes are reusable instances.** `init` runs at most once per scene instance, lazily on first activation; a failed `init` may be retried, and `enter` never runs unless `init` completed. `enter`/`exit` pair on every activation and deactivation.
+- **Activation order is deterministic:** `init` (first activation only), then `enter`. A scene becomes active only after `enter` returns.
+- **Transitions** exit the previous scene before entering the next. They apply immediately when requested outside scene hooks; requested from inside a running hook (`update`, `enter`, `exit`), they are deferred to the start of the next `update` so the requesting update finishes on the scene that asked to leave, and the new scene updates in the same frame its transition applies. The most recent request always wins: it replaces any pending deferred transition, and requesting the already-active scene cancels a pending one and is otherwise a no-op. Unknown names throw `SceneError` without changing any state.
+- **Hook errors are never wrapped or swallowed.** A throw propagates unchanged to the caller of `start`, `goTo`, or `update`; when that caller is the game loop, the loop stops (the existing `onUpdate` contract). The manager keeps its own state consistent: after a failed transition it has no active scene, the failed scene receives no `exit`, and a later `goTo` to any registered scene recovers (a failed `init` is retried on the next activation attempt).
+- **Disposal** is immediate, idempotent, and terminal: the active scene is exited, then every scene whose `init` completed is disposed in registration order (scenes never initialized have no manager-managed resources). Cleanup is best-effort: one hook's failure does not prevent the remaining cleanup, and the first error is rethrown — as an `AggregateError` when several hooks fail — after all cleanup attempts complete. Afterwards `start`, `goTo`, and `update` throw `SceneError`. Disposing the manager does not stop a `Game` that drives it: the caller owns both and must dispose each (the demo disposes scenes, then the game, on `pagehide`).
+
+Intentionally unsupported (documented scope, not omissions by accident): scene stacks, transition effects, scene persistence, and async hooks.
 
 ## Dependency direction
 
@@ -87,15 +111,16 @@ Why core stays renderer-agnostic:
 
 ## Current vs provisional
 
-Current (MVP 1A):
+Current (MVP 1B):
 - The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
 - The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
+- The `Scene` contract and `SceneManager` lifecycle, transition, error, and disposal semantics described above.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
-- The hello-world Vite demo as the reference consumer of the public API.
+- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter's provisional `stage` and keeps all PixiJS objects at the example boundary.
 
 Provisional (expect to change in later MVPs):
 - The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
-- The PixiJS adapter's internals; it will be reworked once core owns scenes and more rendering features.
+- The PixiJS adapter's internals; it will be reworked as core grows more rendering features.
 - The `stage` accessor on the adapter: it leaks a PixiJS `Container` type to adapter consumers. Acceptable while the adapter is the only way to draw; a renderer-agnostic display API would replace it.
 - The test aliasing setup; it may move to package-level configs when the workspace grows.

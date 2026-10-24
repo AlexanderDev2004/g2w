@@ -1,6 +1,14 @@
 import type { Scene } from "./scene.js";
 import { SceneError } from "./scene-error.js";
 
+/**
+ * Scenes already claimed by a `SceneManager`. A scene instance belongs to
+ * exactly one manager for its lifetime — see the ownership note on
+ * {@link Scene}. The claim is made at registration and never released, even
+ * when the owning manager is disposed.
+ */
+const claimedScenes = new WeakSet<Scene>();
+
 /** Options for constructing a {@link SceneManager}. */
 export interface SceneManagerOptions {
   /**
@@ -59,7 +67,12 @@ interface SceneEntry {
  *   `start`, `goTo`, and `update` throw {@link SceneError}.
  *
  * Intentionally unsupported: async hooks, scene stacks, transition effects,
- * and constructor-time or `start`-time scene replacement.
+ * constructor-time or `start`-time scene replacement, and sharing a scene
+ * instance between managers — registering a scene object that another
+ * `SceneManager` (or another name in the same record) already claims throws
+ * {@link SceneError}. The claim is permanent: it is not released when the
+ * owning manager is disposed, because that manager's disposal is terminal
+ * for the scenes it owns.
  */
 export class SceneManager {
   readonly #entries: Map<string, SceneEntry>;
@@ -86,6 +99,13 @@ export class SceneManager {
       if (scene === undefined || scene === null || typeof scene !== "object") {
         throw new SceneError(`Scene "${name}" must be a scene object.`);
       }
+      if (claimedScenes.has(scene)) {
+        throw new SceneError(
+          `Scene instance registered as "${name}" is already owned by a SceneManager. ` +
+            "A scene instance belongs to exactly one manager for its lifetime; create a new instance instead.",
+        );
+      }
+      claimedScenes.add(scene);
       entries.set(name, { name, scene, initialized: false });
     }
 

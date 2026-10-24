@@ -56,7 +56,7 @@ The scheduling mechanism is isolated behind the `FrameScheduler` interface (brow
 
 ### `SceneManager` — scenes and transitions
 
-`SceneManager` (in core) owns a fixed set of named, reusable scenes and updates only the active one. It runs no frame loop of its own: applications compose it with `Game` by driving it from the game's `onUpdate` callback, so there is exactly one loop and the scene update happens before each render, like any other update logic.
+`SceneManager` (in core) owns a fixed set of named, reusable scenes and updates only the active one. A scene instance belongs to exactly one manager for its lifetime: registering the same instance in another manager (or twice in one record) throws `SceneError`, and the claim survives the owning manager's disposal — `exit` deactivates a scene, disposal is what is permanent. It runs no frame loop of its own: applications compose it with `Game` by driving it from the game's `onUpdate` callback, so there is exactly one loop and the scene update happens before each render, like any other update logic.
 
 ```ts
 const scenes = new SceneManager({ scenes: { menu, gameplay }, initial: "menu" });

@@ -1,6 +1,14 @@
 /**
  * A named, reusable unit of game logic managed by a {@link SceneManager}.
  *
+ * A scene instance belongs to exactly one manager for its lifetime: the
+ * manager that registers it claims it (at construction) and no other manager
+ * may register the same instance, even after the owning manager is disposed.
+ * Registering a claimed instance throws {@link SceneError}; create a new
+ * instance instead. A claimed scene may still be exited and re-entered any
+ * number of times until its manager is disposed — `exit` deactivates,
+ * disposal is what is permanent.
+ *
  * All hooks are optional and synchronous. Scenes acquire resources in `init`
  * or `enter` and release them in `exit` or `dispose`; the manager drives the
  * hooks in a fixed order (see `SceneManager` for the full lifecycle and

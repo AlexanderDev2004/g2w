@@ -138,6 +138,32 @@ describe("SceneManager construction", () => {
     expect(() => new SceneManager({ scenes: { menu }, initial: "missing" })).toThrow(SceneError);
   });
 
+  it("rejects the same scene instance registered under two names", () => {
+    const scene = new FakeScene("shared");
+
+    expect(() => new SceneManager({ scenes: { a: scene, b: scene }, initial: "a" })).toThrow(
+      SceneError,
+    );
+  });
+
+  it("rejects a scene instance already owned by another manager", () => {
+    const menu = new FakeScene("menu");
+    const gameplay = new FakeScene("gameplay");
+    new SceneManager({ scenes: { menu, gameplay }, initial: "menu" });
+
+    expect(() => new SceneManager({ scenes: { gameplay }, initial: "gameplay" })).toThrow(
+      SceneError,
+    );
+  });
+
+  it("keeps the claim after the owning manager is disposed", () => {
+    const menu = new FakeScene("menu");
+    const manager = new SceneManager({ scenes: { menu }, initial: "menu" });
+    manager.dispose();
+
+    expect(() => new SceneManager({ scenes: { menu }, initial: "menu" })).toThrow(SceneError);
+  });
+
   it("rejects an empty scenes record", () => {
     expect(() => new SceneManager({ scenes: {}, initial: "menu" })).toThrow(SceneError);
   });

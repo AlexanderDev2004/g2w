@@ -112,11 +112,11 @@ Ownership is a constructor decision:
 
 `createTextureAssetManager()` deliberately omits `disposeAsset`: textures returned by PixiJS's shared `Assets` cache may be referenced by other managers or sprites, and PixiJS offers no supported exclusive-ownership mechanism (`Assets.unload` destroys regardless of other holders).
 
-**Resource-lifecycle warning (open question R1 in [ROADMAP.md](ROADMAP.md)):** these two documented policies coexist:
-1. _Asset policy:_ framework asset disposal never destroys shared-cache textures; they "live until the page unloads."
-2. _Renderer implementation:_ `PixiRenderer.dispose()` calls `Application.destroy(..., { texture: true, textureSource: true })`, which **does** destroy every texture attached to the stage tree at that moment.
+**Resource-lifecycle decision (R1, resolved):** texture ownership is split explicitly across the stack:
+1. _Asset policy:_ the framework's asset disposal never destroys shared-cache textures; they live until the page unloads (or the application unloads them explicitly with `Assets.unload`).
+2. _Renderer policy:_ `PixiRenderer.dispose()` destroys the display objects still attached to the stage (`children: true`) but **never textures or texture sources**. Stage-attached textures come from PixiJS's shared `Assets` cache and may be referenced by other managers, sprites, or subsystems, so the renderer cannot prove exclusive ownership and must not destroy them (see [packages/renderer-pixi/src/pixi-renderer.ts](packages/renderer-pixi/src/pixi-renderer.ts)).
 
-In the demo's teardown order (scenes → game → assets, [examples/hello-world/src/main.ts](examples/hello-world/src/main.ts)) stage-attached textures are therefore destroyed by the renderer, not reclaimed by the page unload. The two statements are each true of their own API, but the composed behavior contradicts the documented lifetime claim. This is recorded as an open decision (renderer stops destroying textures, or the docs state that renderer disposal ends texture lifetime for stage content); **no code change was made speculatively** — see [ROADMAP.md](ROADMAP.md) R1.
+The policies compose: exactly one framework-wide texture lifetime exists — the non-destructive one. Regressions are pinned by tests (`packages/renderer-pixi/test/pixi-renderer.test.ts`): disposal with a shared cached texture keeps the texture and its source valid, texture reuse across renderer disposal works, and a dedicated test documents that PixiJS's `texture: true, textureSource: true` destroy options **do** destroy stage textures — if the renderer ever passes those flags again, the test fails. Trade-off: textures never explicitly unloaded by the application live until page unload, which the framework accepts for safety.
 
 ## 11. Error handling and disposal
 
@@ -143,9 +143,15 @@ Entry points are the `exports` maps in each `package.json`; [scripts/verify-expo
 
 ## 15. Known limitations and open decisions
 
-1. **Texture lifetime vs renderer disposal** — the open question documented in §10 and tracked as R1.
+1. **Texture lifetime is non-destructive** — textures from PixiJS's shared cache are never destroyed by framework disposal (asset manager or renderer; resolved R1 decision in §10). Applications unload explicitly when they know a texture is no longer used.
 2. **No game-object layer yet** — games manage sprite arrays themselves; planned (R2).
 3. **Sprites pivot at the texture's top-left**; anchors/pivots are planned (R3).
 4. **Synchronous scene hooks only** — async lifecycle is intentionally unsupported to keep transitions deterministic.
 5. **Packages are unpublished** — public APIs may still change without semver protection.
 6. **Browser smoke testing is not automated in CI** — the demo is validated manually or via a headless session; CI covers packages only.
+
+## 16. Implemented vs. planned
+
+Everything described in sections 1–15 above is **implemented and tested today** (MVP 0 through MVP 1F): the renderer contract, `Game` lifecycle and frame loop, `SceneManager` with one-manager-per-scene ownership, `InputState` + `DomInput`, `AssetManager` + the PixiJS texture loader, and `Transform2D`/`Sprite2D` + `createSpriteView`.
+
+Not implemented and explicitly tracked in [ROADMAP.md](ROADMAP.md): a game-object/display model (R2), sprite anchors/pivots and z-ordering (R3), audio (R4), gamepad/touch input (R5), a starter template and CLI (R7), and exploratory items (Three.js adapter, integrations, npm publishing). Physics, camera, tilemaps, animation systems, and benchmarks have no committed milestone — they are listed under "Candidate work / not yet committed" in the roadmap.

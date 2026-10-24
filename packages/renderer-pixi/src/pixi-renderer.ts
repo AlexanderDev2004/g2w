@@ -4,7 +4,35 @@ import {
   RendererError,
   type RendererInitOptions,
 } from "@g2w/core";
-import { Application, type Container } from "pixi.js";
+import {
+  Application,
+  type ApplicationOptions,
+  type Container,
+  type DestroyOptions,
+  type RendererDestroyOptions,
+} from "pixi.js";
+
+/**
+ * The subset of the PixiJS `Application` API the adapter uses. Injectable so
+ * tests (and alternative application hosts) can substitute their own instance;
+ * production code omits the injection and gets a real `Application`.
+ */
+export interface PixiApplicationLike {
+  init(options?: Partial<ApplicationOptions>): Promise<void>;
+  render(): void;
+  destroy(rendererDestroyOptions?: RendererDestroyOptions, options?: DestroyOptions): void;
+  readonly stage: Container;
+}
+
+/** Options for constructing a {@link PixiRenderer}. */
+export interface PixiRendererOptions {
+  /**
+   * Creates the underlying PixiJS `Application`. Defaults to
+   * `() => new Application()`. Injectable so tests can substitute a fake
+   * without a browser or GPU; production code should omit it.
+   */
+  readonly createApplication?: () => PixiApplicationLike;
+}
 
 /**
  * g2w renderer adapter built on PixiJS.
@@ -17,6 +45,16 @@ import { Application, type Container } from "pixi.js";
  * loop from `@g2w/core` drives rendering through {@linkcode PixiRenderer.render}.
  * The stage is exposed so applications can add content without a broader
  * scene API — this is a provisional, minimal capability.
+ *
+ * Ownership — the renderer owns **display objects, never textures**: disposal
+ * destroys the display objects still attached to the stage, but no texture or
+ * texture source. Stage-attached textures typically come from PixiJS's shared
+ * `Assets` cache (see `createTextureAssetManager`) and may be referenced by
+ * other managers, sprites, or subsystems, so the renderer cannot prove
+ * exclusive ownership and must not destroy them. Texture lifetime is governed
+ * by the asset policy: shared-cache textures live until the page unloads, and
+ * an application that knows nothing else uses a texture may unload it
+ * explicitly with `Assets.unload(url)`.
  */
 export class PixiRenderer implements Renderer {
   readonly capabilities: RendererCapabilities = {
@@ -24,7 +62,12 @@ export class PixiRenderer implements Renderer {
     displayName: "PixiJS",
   };
 
-  #application: Application | null = null;
+  #application: PixiApplicationLike | null = null;
+  readonly #createApplication: () => PixiApplicationLike;
+
+  constructor(options: PixiRendererOptions = {}) {
+    this.#createApplication = options.createApplication ?? (() => new Application());
+  }
 
   get initialized(): boolean {
     return this.#application !== null;
@@ -49,7 +92,7 @@ export class PixiRenderer implements Renderer {
       );
     }
 
-    const application = new Application();
+    const application = this.#createApplication();
     await application.init({
       canvas: options.canvas,
       autoDensity: true,
@@ -83,9 +126,12 @@ export class PixiRenderer implements Renderer {
 
     this.#application = null;
     // removeView: false keeps the caller-provided canvas in the DOM.
-    application.destroy(
-      { removeView: false },
-      { children: true, texture: true, textureSource: true },
-    );
+    // children: true destroys the display objects the stage still holds; the
+    // renderer owns stage content. The texture and textureSource flags are
+    // deliberately NOT set (R1): stage-attached textures come from PixiJS's
+    // shared `Assets` cache (see createTextureAssetManager) and may still be
+    // referenced by other managers, sprites, or subsystems, so destroying
+    // them here could invalidate resources the renderer does not own.
+    application.destroy({ removeView: false }, { children: true });
   }
 }

@@ -36,19 +36,21 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **MVP 1E — 2D transform & sprite API** `Done` `P1`: `Transform2D`, `Sprite2D<TTexture>`, `createSpriteView()` with explicit `sync()`, idempotent disposal, and never-destroy-shared-texture semantics; animated demo through the existing game loop.
 - **MVP 1F — Scene ownership hardening** `Done` `P2`: permanent one-manager-per-scene claim enforced at registration.
 - **CI & supply-chain hardening** `Done` `P1`: least-privilege workflow permissions (`contents: read`), third-party Actions pinned to verified commit SHAs, Dependabot version updates (Actions + npm ecosystems, weekly), CONTRIBUTING.md with AI-contribution policy.
+- **R1 — Renderer-disposal texture semantics** `Done` `P0`: `PixiRenderer.dispose()` destroys stage display objects only, never textures or texture sources; the single framework-wide texture lifetime is the non-destructive asset policy, pinned by regression tests.
 
 ## Near-term (current focus)
 
 ### R1 — Reconcile renderer-disposal texture semantics
 
-**Status:** Planned · **Priority:** P0
+**Status:** Done · **Priority:** P0
 - **Objective:** make texture lifetime unambiguous across the whole stack.
-- **Scope:** `PixiRenderer.dispose()` currently destroys stage-attached textures (`texture: true, textureSource: true`), while the asset policy says textures from PixiJS's shared `Assets` cache are never destroyed by framework disposal and live until page unload. Both statements are true of their own API, but the composition misleads and can destroy textures still referenced outside the stage.
-- **Dependencies:** none.
+- **Resolution (implemented and tested):** `PixiRenderer.dispose()` destroys the display objects still attached to the stage (`children: true`) but never textures or texture sources — the `texture: true, textureSource: true` flags were removed. The renderer cannot prove exclusive ownership of stage-attached textures (they come from PixiJS's shared `Assets` cache and may be referenced by other managers, sprites, or subsystems), so the renderer owns display objects only. Exactly one framework-wide texture lifetime now exists: shared-cache textures live until page unload, and applications unload explicitly with `Assets.unload(url)` when they know nothing else uses a texture.
+- **Evidence:** regression tests in `packages/renderer-pixi/test/pixi-renderer.test.ts` cover disposal with a shared cached texture (texture and source stay valid), consumers outside the stage, texture reuse across disposal and re-initialization, repeated disposal, and the partial-initialization path. A dedicated test pins the hazard: PixiJS destroy options with `texture: true, textureSource: true` do destroy stage textures, so reintroducing those flags fails the suite.
+- **Trade-off:** textures the application never unloads explicitly live until page unload — accepted in exchange for never destroying a texture another consumer still holds.
 - **Acceptance criteria:**
-  1. Documented, tested decision: either the renderer stops destroying textures (`texture: false`) or the docs state that renderer disposal ends texture lifetime for everything on the stage.
-  2. Demo teardown order verified against the decision.
-  3. No test asserts both policies simultaneously.
+  1. [x] Documented, tested decision: the renderer stops destroying textures; docs state that framework disposal never ends texture lifetime.
+  2. [x] Demo teardown order verified against the decision (scenes → game → assets; nothing in the chain destroys textures — see [examples/hello-world/src/main.ts](examples/hello-world/src/main.ts)).
+  3. [x] No test asserts both policies simultaneously; the hazard test asserts only the PixiJS flag semantics the policy avoids.
 
 ### R2 — Game objects / display model
 
@@ -118,13 +120,49 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **Objective:** publish `@g2w/*` packages with a documented versioning policy.
 - **Acceptance criteria:** provenance-enabled publishing, license/attribution review (including the demo logo asset), and a release checklist.
 
+## MVP 1F verification / release criteria
+
+Checklist for the current milestone. Each box is checked only with evidence from the current codebase (tests, commands, or the headless browser smoke run).
+- [x] Dependencies install with `pnpm install --frozen-lockfile` (exit 0, verified this milestone).
+- [x] Type checking, formatting/linting, and tests pass (`pnpm typecheck`, `pnpm check`, `pnpm test` — 142/142).
+- [x] The game runtime initializes, updates, renders, and shuts down (Game lifecycle tests + headless smoke).
+- [x] Scene transitions and lifecycle behavior work correctly (29+ scene-manager tests: ordering, deferral, error recovery, disposal; demo menu ↔ gameplay verified in the smoke run).
+- [x] Keyboard and pointer input behave as documented (input tests + demo smoke run).
+- [x] Asset loading, caching, deduplication, retry, and ownership behavior are tested (asset-manager suite).
+- [x] Resource cleanup follows an explicit, tested ownership policy (scene claim registry, sprite-view, asset-manager, and renderer-disposal texture-ownership tests).
+- [x] The browser demo runs with documented steps (`pnpm dev`), verified by headless CDP smoke (11/11 checks).
+- [x] Documentation matches the public API and actual behavior (this review).
+- [ ] Dependabot security updates enabled in repository settings (API attempts left it `disabled`; manual step for the owner).
+
+## Candidate work / not yet committed
+
+The following areas have **no committed milestone or priority yet**. They are listed so their absence is explicit, not accidental. Any of them can be promoted to a roadmap item via the proposal process above once there is a concrete need:
+- Physics and collision.
+- Camera support.
+- Tilemaps.
+- A full animation system (tweening, keyframes, skeletal) — beyond mutating models in `update()`.
+- Sprite batching helpers and texture atlases.
+- Manifest-based bulk asset loading.
+- Action mapping / input rebinding.
+- Scene stacks and transition effects.
+- Performance benchmarks (a reproducible benchmark harness should exist before any performance claim is made).
+
 ## Risks and open questions
 
-- **Renderer-disposal texture lifetime** — see R1; the only known contradiction between two documented policies.
-- **PixiJS shared cache** — no supported way to prove exclusive texture ownership; the non-destructive policy trades memory for safety until R1 resolves the renderer side.
+- **PixiJS shared cache** — no supported way to prove exclusive texture ownership; the non-destructive policy (R1) trades memory (textures live until page unload unless explicitly unloaded) for safety.
 - **Unpublished API** — public contracts may still change; nothing is semver-stable yet.
 - **AI-agent skills content** — dependency-provided agent skills (see `pnpm-workspace.yaml` permissions) are reviewed on each PixiJS update.
 
 ## Proposing changes to this roadmap
 
 Open an issue describing the proposed milestone with objective, scope, dependencies, and acceptance criteria. Roadmap changes are made by the maintainers after discussion; significant architecture changes should be discussed before implementation (see [CONTRIBUTING.md](CONTRIBUTING.md)).
+
+## Recommended development sequence
+
+A technically coherent order for the near-term work — a recommendation, not a change of status without evidence:
+1. ~~**R1** — resolve resource ownership and renderer-disposal semantics while the codebase is small.~~ (Done.)
+2. Strengthen the existing example and regression tests as each milestone lands.
+3. **R2** — a minimal renderer-agnostic game-object/display model once it provides clear value.
+4. **R3** — sprite ordering and transform-related features built on R2.
+5. Establish a reproducible performance benchmark (see Candidate work) before making any performance claim.
+6. **R8** — evaluate a Three.js adapter only after the core and renderer contracts have been stable for a release cycle.

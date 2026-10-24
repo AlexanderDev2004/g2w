@@ -1,5 +1,9 @@
 export { createTextureAssetManager, type TextureAssetManagerOptions } from "./assets.js";
-export { PixiRenderer } from "./pixi-renderer.js";
+export {
+  type PixiApplicationLike,
+  PixiRenderer,
+  type PixiRendererOptions,
+} from "./pixi-renderer.js";
 export {
   createSpriteView,
   SpriteView,

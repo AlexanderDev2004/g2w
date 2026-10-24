@@ -204,8 +204,9 @@ try {
     // Adapter first (no further events reach the state), then scenes (they
     // destroy their sprites and remove their children from the stage), then
     // the game (releases the renderer), and finally the asset manager (it
-    // releases its cache; the textures themselves are never destroyed by the
-    // manager — the page unload reclaims them).
+    // releases its cache). Neither the manager nor the renderer ever destroys
+    // textures — the renderer owns display objects only, and the manager's
+    // policy is non-destructive — so the page unload reclaims them.
     try {
       domInput.dispose();
       scenes.dispose();

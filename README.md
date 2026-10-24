@@ -2,7 +2,7 @@
 
 **g2w — Game to Website** is a TypeScript-first, AI-agent-ready framework for building and shipping web games: HTML5 games, 2D first with 3D planned, for desktop and mobile web browsers.
 
-> **Status: MVP 1E — 2D transform & sprite API.** The repository provides a `Game` runtime (lifecycle + frame loop), a renderer-agnostic `SceneManager`, a DOM-free `InputState` with a browser adapter, a minimal asset system (`AssetManager` in core plus a PixiJS texture loader in the renderer adapter), and a renderer-agnostic 2D sprite model (`Transform2D`/`Sprite2D` in core, projected onto PixiJS by the adapter) on top of the MVP 0 foundation: monorepo, renderer contract, PixiJS adapter, and a working browser demo. There is no game-object or entity system yet. See [What is implemented](#what-is-implemented) below.
+> **Status: MVP 1F — scene ownership hardening.** The repository provides a `Game` runtime (lifecycle + frame loop), a renderer-agnostic `SceneManager`, a DOM-free `InputState` with a browser adapter, a minimal asset system (`AssetManager` in core plus a PixiJS texture loader in the renderer adapter), and a renderer-agnostic 2D sprite model (`Transform2D`/`Sprite2D` in core, projected onto PixiJS by the adapter) on top of the MVP 0 foundation: monorepo, renderer contract, PixiJS adapter, and a working browser demo. There is no game-object or entity system yet. See [What is implemented](#what-is-implemented) below.
 
 ## Architecture
 
@@ -53,6 +53,19 @@ pnpm install
 - **Input system** — `@g2w/core` provides the DOM-free `InputState` (keyboard held/pressed/released, pointer position, button state, focus-loss and pointer-leave policies) and `@g2w/input-dom` adapts real browser events onto it. Edge states reset at one explicit boundary (`input.endFrame()`) per game frame. See [docs/architecture.md](docs/architecture.md) for the frame semantics.
 - **Asset system** — `@g2w/core` provides a generic, dependency-free `AssetManager`: asynchronous loading through a caller-supplied loader, caching, deduplication of concurrent requests, retryable failures, and explicit resource ownership (a supplied `disposeAsset` makes the manager own its values; without one, values stay caller-owned). `@g2w/renderer-pixi` adds `createTextureAssetManager()`, which loads PixiJS textures by URL and is deliberately non-destructive: textures from PixiJS's shared `Assets` cache are never destroyed by manager disposal, because PixiJS offers no way to prove no other code still uses them. See [docs/architecture.md](docs/architecture.md) for the ownership rules and the memory trade-off.
 - **2D sprite model** — `@g2w/core` provides `Transform2D` (mutable `x`/`y`, `rotation` in radians, `scaleX`/`scaleY`; defaults `0, 0, 0, 1, 1`) and `Sprite2D<TTexture>` (typed texture handle, transform, `visible`, `alpha`) — plain mutable data with no renderer coupling. `@g2w/renderer-pixi` adds `createSpriteView({ sprite, renderer })`, which attaches a PixiJS sprite to the stage; game code mutates the model and calls `view.sync()` once per frame (the existing game loop is the only driver), and `view.dispose()` removes and destroys the display object without ever destroying the shared texture. See [docs/architecture.md](docs/architecture.md) for the ownership rules.
+- **Scene ownership hardening** — a scene instance belongs to exactly one `SceneManager` for its lifetime: registering the same instance in another manager (or twice in one record) throws `SceneError`, and the claim survives the owning manager's disposal. `exit` deactivates a scene; disposal is what is permanent. See [docs/architecture.md](docs/architecture.md).
+
+For implementation details, read [ARCHITECTURE.md](ARCHITECTURE.md); for current priorities and planned work, read [ROADMAP.md](ROADMAP.md).
+
+## Current limitations
+
+- **No game-object/entity system** — games manage sprite arrays themselves; the framework provides `Sprite2D`/`Transform2D` and views, not a scene-graph object model.
+- **No physics, collision, camera, or tilemap system.**
+- **No dedicated animation framework** — animation is done by mutating models in `update(deltaTime)` (the demo does this for rotation/scale); there are no tweening, keyframe, or skeletal systems.
+- **No audio system.**
+- **No gamepad or touch-input support** — keyboard and mouse/pointer only.
+- **No 3D adapter** — the Three.js adapter is exploratory ([ROADMAP.md](ROADMAP.md) R8).
+- **Texture lifetime is non-destructive** — neither the asset manager nor the renderer ever destroys textures from PixiJS's shared cache; they live until page unload unless the application unloads them explicitly (the resolved R1 decision, documented in [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md)).
 
 ## Minimal usage
 
@@ -119,9 +132,6 @@ Ownership: the caller owns the input state, the browser adapter, the asset manag
 
 ## What is planned (not implemented yet)
 
-- Game objects, audio, sprite anchors/pivots and z-ordering, sprite batching helpers, texture atlases, manifest-based bulk loading, physics, cameras, gamepad input, action mapping, scene stacks and transition effects.
-- A Vite starter and project-generation CLI.
-- A Three.js adapter for 3D.
-- Optional integrations for React, Vue, Next.js, Bun, and Effect.
+See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Near-term priorities: a minimal renderer-agnostic game-object layer (R2), and sprite anchors/pivots and z-ordering (R3). Exploratory: audio, gamepad/touch input, a starter template and CLI, a Three.js adapter, integrations (React, Vue, Effect), and npm publishing.
 
 Packages are not published to npm yet; the workspace is for local development and CI.

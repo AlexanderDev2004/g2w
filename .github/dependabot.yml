@@ -1,0 +1,27 @@
+version: 2
+updates:
+  # CI workflow actions (all pinned to commit SHAs; Dependabot updates the
+  # pin when a new release of the commented version tag exists).
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    groups:
+      actions:
+        applies-to: version-updates
+        patterns:
+          - "*"
+
+  # pnpm-managed JavaScript/TypeScript workspace (root + packages/* + examples/*)
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      dev-tooling:
+        applies-to: version-updates
+        dependency-type: "development"
+        patterns:
+          - "*"

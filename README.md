@@ -1,4 +1,4 @@
-# g2w
+# g2w - Game To Website
 
 **g2w — Game to Website** is a TypeScript-first, AI-agent-ready framework for building and shipping web games: HTML5 games, 2D first with 3D planned, for desktop and mobile web browsers.
 

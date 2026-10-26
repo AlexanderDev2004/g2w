@@ -32,6 +32,14 @@ export interface GameOptions {
   /** Optional resolution passed through to the renderer. */
   readonly resolution?: number;
   /**
+   * Logical resolution width passed through to the renderer. Optional; see
+   * `RendererInitOptions.width` for the semantics (both dimensions or
+   * neither, finite and greater than zero).
+   */
+  readonly width?: number;
+  /** Logical resolution height passed through to the renderer. Optional. */
+  readonly height?: number;
+  /**
    * Called once per frame with the elapsed time in seconds, after the game
    * enters the running state and before the renderer renders the frame.
    * An exception thrown here stops the frame loop (state returns to
@@ -96,12 +104,24 @@ export class Game {
     ) {
       throw new GameError("maxDeltaTime must be a finite number greater than zero seconds.");
     }
+    if ((options.width === undefined) !== (options.height === undefined)) {
+      throw new GameError("Game requires both width and height, or neither.");
+    }
+    if (
+      (options.width !== undefined && (!Number.isFinite(options.width) || options.width <= 0)) ||
+      (options.height !== undefined && (!Number.isFinite(options.height) || options.height <= 0))
+    ) {
+      throw new GameError("width and height must be finite numbers greater than zero.");
+    }
 
     this.#renderer = options.renderer;
     this.#initOptions = {
       canvas: options.canvas,
       backgroundColor: options.backgroundColor,
       resolution: options.resolution,
+      ...(options.width === undefined && options.height === undefined
+        ? {}
+        : { width: options.width, height: options.height }),
     };
     this.#onUpdate = options.onUpdate;
     this.#maxDeltaTime = options.maxDeltaTime ?? 0.25;

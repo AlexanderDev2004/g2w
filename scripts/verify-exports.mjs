@@ -294,6 +294,9 @@ const pixi = new renderer.PixiRenderer();
 if (pixi.capabilities.id !== "pixi" || pixi.initialized !== false) {
   throw new Error("@g2w/renderer-pixi: unexpected PixiRenderer state.");
 }
+if (typeof pixi.resize !== "function") {
+  throw new Error("@g2w/renderer-pixi: PixiRenderer does not expose resize (R3 sizing contract).");
+}
 await pixi.dispose().then(
   () => {
     throw new Error("PixiRenderer.dispose() should reject before initialization.");

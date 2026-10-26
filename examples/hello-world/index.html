@@ -23,6 +23,19 @@
         color: #aaccff;
         font-size: 14px;
       }
+      /* Fixed logical resolution with proportional display scaling: the
+         canvas is 640×360 logical pixels and shrinks proportionally on
+         narrower viewports instead of overflowing the page. */
+      #game {
+        /* !important is required: PixiJS autoDensity writes inline
+           width/height styles on the canvas, and inline styles beat plain
+           stylesheet declarations. There is no non-important way to scale
+           the canvas display size in pure CSS. */
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        max-width: 100% !important;
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        height: auto !important;
+      }
     </style>
   </head>
   <body>

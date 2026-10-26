@@ -15,9 +15,9 @@ Then open the printed local URL (for example `http://localhost:5173/`) in a brow
 
 ## What it demonstrates
 
-- `new Game({ renderer, canvas, onUpdate })` — constructing the runtime with the PixiJS adapter and a canvas.
+- `new Game({ renderer, canvas, onUpdate, width: VIEW_WIDTH, height: VIEW_HEIGHT, resolution })` — constructing the runtime with the PixiJS adapter and a canvas. The width/height pair sets the logical resolution: the stage coordinate space game code uses, with the drawing buffer at `width×height×resolution`.
 - `new SceneManager({ scenes, initial: "menu" })` — registering two scenes and starting with the menu.
-- `new InputState()` + `new DomInput(input, { canvas })` — the input path: a DOM-free state from `@g2w/core`, fed by real browser events from `@g2w/input-dom`.
+- `new InputState()` + `new DomInput(input, { canvas, logicalSize: { width: VIEW_WIDTH, height: VIEW_HEIGHT } })` — the input path: a DOM-free state from `@g2w/core`, fed by real browser events from `@g2w/input-dom`. `logicalSize` maps pointer coordinates into the game's logical space so input stays correct when CSS scales the canvas display size.
 - `createTextureAssetManager()` + `await assets.load("assets/g2w-logo.png")` — the asset path: the app creates and owns one texture asset manager from `@g2w/renderer-pixi`; the local image is loaded through the public asset API and shown in the gameplay scene. A second request for the same URL is served from the cache — the menu shows `texture cache: hit` to prove it.
 - `new Sprite2D({ texture, transform: new Transform2D({ x, y }) })` + `createSpriteView({ sprite, renderer })` — the sprite path: game logic mutates the renderer-agnostic `Sprite2D`/`Transform2D` model and calls `logoView.sync()` once per change; the PixiJS adapter applies the transform to its display object. The gameplay scene animates the logo's rotation and scale purely through the model. The view is created once and reused across scene transitions — visibility is toggled through `logoModel.visible` plus `sync()`, so no sprite is duplicated.
 - `onUpdate: (dt) => { scenes.update(dt); input.endFrame(); }` — the active scene is updated by the existing game loop and the input edge states reset once per frame, after every consumer. There is no second loop.

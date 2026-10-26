@@ -16,6 +16,7 @@ class FakeRenderer implements Renderer {
   #renderCount = 0;
   failNextInitialize = false;
   failNextDispose = false;
+  lastInitOptions: RendererInitOptions | null = null;
 
   get initialized(): boolean {
     return this.#initialized;
@@ -33,8 +34,9 @@ class FakeRenderer implements Renderer {
     return this.#renderCount;
   }
 
-  async initialize(_options: RendererInitOptions): Promise<void> {
+  async initialize(options: RendererInitOptions): Promise<void> {
     this.#initCount++;
+    this.lastInitOptions = options;
     if (this.failNextInitialize) {
       throw new RendererError("FakeRenderer failed to initialize.");
     }
@@ -117,6 +119,39 @@ function createGame(overrides: Partial<ConstructorParameters<typeof Game>[0]> = 
   });
   return { game, renderer, scheduler, deltas };
 }
+
+describe("Game sizing options (R3)", () => {
+  it("passes logical dimensions through to the renderer's init options", async () => {
+    const { game, renderer } = createGame({ width: 640, height: 360, resolution: 2 });
+    await game.init();
+
+    expect(renderer.lastInitOptions?.width).toBe(640);
+    expect(renderer.lastInitOptions?.height).toBe(360);
+    expect(renderer.lastInitOptions?.resolution).toBe(2);
+  });
+
+  it("omits the dimension keys entirely when no size is configured", async () => {
+    const { game, renderer } = createGame();
+    await game.init();
+
+    const initOptions = renderer.lastInitOptions ?? {};
+    expect("width" in initOptions).toBe(false);
+    expect("height" in initOptions).toBe(false);
+  });
+
+  it("rejects width without height and height without width", () => {
+    expect(() => createGame({ width: 640 })).toThrow(GameError);
+    expect(() => createGame({ height: 360 })).toThrow(GameError);
+  });
+
+  it.each([0, -1, Number.NaN, Number.POSITIVE_INFINITY])(
+    "rejects non-positive or non-finite dimensions (%s)",
+    (invalid) => {
+      expect(() => createGame({ width: invalid, height: 360 })).toThrow(GameError);
+      expect(() => createGame({ width: 640, height: invalid })).toThrow(GameError);
+    },
+  );
+});
 
 describe("Game lifecycle", () => {
   it("initializes successfully", async () => {

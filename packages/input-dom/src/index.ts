@@ -25,6 +25,15 @@ export interface DomInputOptions {
   /** Target for `pointerup` events. Defaults to `window`, so a release that
    * happens off-canvas is still observed. */
   readonly pointerUpTarget?: EventTarget;
+  /**
+   * The game's logical coordinate space. When provided, pointer coordinates
+   * are mapped into this space (the renderer's logical resolution), so game
+   * code reads positions in stage coordinates regardless of the canvas's
+   * backing resolution or CSS display scaling. When omitted, coordinates are
+   * mapped into the canvas's backing pixels (`canvas.width`/`canvas.height`),
+   * the behavior before logical sizing existed.
+   */
+  readonly logicalSize?: { readonly width: number; readonly height: number };
 }
 
 interface ListenerRegistration {
@@ -46,10 +55,11 @@ interface ListenerRegistration {
  * - The adapter never calls `preventDefault()`; page scrolling and other
  *   default behavior stay under the application's control.
  *
- * Coordinate policy: pointer coordinates are canvas-relative canvas pixels,
- * computed from the event's client coordinates and the canvas's bounding
- * rectangle, scaled by `canvas.width`/`canvas.height` so the values match the
- * canvas's internal resolution even when CSS scales it.
+ * Coordinate policy: pointer coordinates are canvas-relative pixels scaled
+ * into the configured target space — the `logicalSize` game space when
+ * provided, otherwise the canvas's backing resolution (`canvas.width`/
+ * `canvas.height`) — so values match the space game code uses even when CSS
+ * scales or letterboxes the canvas.
  *
  * Ownership: the caller owns the `InputState`, this adapter, and any `Game`
  * and `SceneManager`; each must be disposed separately. A typical teardown
@@ -146,10 +156,20 @@ export class DomInput {
   #toCanvasCoordinates(clientX: number, clientY: number): [x: number, y: number] {
     const rect = this.#options.canvas.getBoundingClientRect();
     if (rect.width === 0 || rect.height === 0) {
+      // A zero-sized canvas has no meaningful mapping; report the raw
+      // offset rather than dividing by zero. Values normalize on the next
+      // move once the canvas has a size again.
       return [clientX - rect.left, clientY - rect.top];
     }
-    const x = (clientX - rect.left) * (this.#options.canvas.width / rect.width);
-    const y = (clientY - rect.top) * (this.#options.canvas.height / rect.height);
+    // Map into the target space: logical when configured (CSS-relative
+    // scaling to the game's stage space), backing pixels otherwise. The
+    // bounding rectangle already accounts for CSS scaling and offsets, so
+    // letterboxing or proportional display scaling are handled by the ratio.
+    const target = this.#options.logicalSize;
+    const scaleX = target ? target.width / rect.width : this.#options.canvas.width / rect.width;
+    const scaleY = target ? target.height / rect.height : this.#options.canvas.height / rect.height;
+    const x = (clientX - rect.left) * scaleX;
+    const y = (clientY - rect.top) * scaleY;
     return [x, y];
   }
 }

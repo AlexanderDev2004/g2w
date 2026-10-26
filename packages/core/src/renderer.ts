@@ -21,6 +21,19 @@ export interface RendererInitOptions {
    * renderer must not remove it from the DOM.
    */
   readonly canvas: HTMLCanvasElement;
+  /**
+   * Logical resolution width in pixels: the coordinate space game code
+   * positions content in (the stage space). Optional; when omitted the
+   * renderer uses its own default logical size. If provided, `height` must
+   * be provided too; renderers reject mixed, non-finite, zero, or negative
+   * values with {@link RendererError}.
+   */
+  readonly width?: number;
+  /**
+   * Logical resolution height in pixels. See {@link RendererInitOptions.width}
+   * for the full semantics.
+   */
+  readonly height?: number;
   /** Background clear color as a CSS color string, e.g. `"#1099bb"`. */
   readonly backgroundColor?: string;
   /**
@@ -58,4 +71,14 @@ export interface Renderer {
    * this once per frame after the update callback, when present.
    */
   render?(): void;
+  /**
+   * Change the logical resolution at runtime. Optional: renderers with a
+   * fixed output may omit it. The arguments follow the same rules as
+   * {@link RendererInitOptions.width}/`height`: both are required and must
+   * be finite and greater than zero, otherwise the renderer throws
+   * {@link RendererError}. Resizing changes only the logical coordinate
+   * space and the drawing buffer — it must never destroy textures or other
+   * assets (see the renderer's ownership policy).
+   */
+  resize?(width: number, height: number): void;
 }

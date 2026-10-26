@@ -57,6 +57,7 @@ pnpm install
 - **Scene ownership hardening** — a scene instance belongs to exactly one `SceneManager` for its lifetime: registering the same instance in another manager (or twice in one record) throws `SceneError`, and the claim survives the owning manager's disposal. `exit` deactivates a scene; disposal is what is permanent. See [docs/architecture.md](docs/architecture.md).
 - **Game objects** — `@g2w/core` provides `GameObject` (a `Transform2D` plus optional `update(deltaTime)` and `destroy()` hooks) and `GameObjectCollection`, a minimal registry that updates registered objects through the existing game loop — no second loop, no ECS, no scene graph. A collection claims each object (one collection at a time; re-registrable after removal), duplicate or cross-collection registration throws `SceneError`, updates iterate a snapshot (adding during `update` takes effect next frame, removing during `update` — including an object removing itself — takes effect immediately), and `destroy()` runs each still-registered object's `destroy` hook exactly once, never touching shared textures or other externally owned resources. See [docs/architecture.md](docs/architecture.md) for the full contract.
 - **DevTools (read-only overlay)** — `@g2w/devtools` provides an opt-in, dev-only DOM overlay that observes a running game without touching it: the scene list (via `SceneManager.keys`), registered game objects and their transforms (via `GameObjectCollection.objects()`), explicitly watched input keys/buttons, FPS/frame time, and a bounded runtime log buffer. It polls immutable snapshots at a fixed refresh rate — it never mutates the runtime, never disposes it, and is excluded from production builds (the demo loads it only behind `import.meta.env.DEV`). A disabled "3D — Coming Soon" placeholder marks the planned 3D inspector. See [docs/architecture.md](docs/architecture.md).
+- **Renderer sizing (R3)** — logical resolution is part of the renderer contract: `width`/`height` on `Game`/`RendererInitOptions` set the stage coordinate space game code uses (both or neither, validated), the drawing buffer is `logical × resolution`, and display size stays application-owned CSS. `Renderer.resize(width, height)` changes the logical space at runtime without ever touching textures. `@g2w/input-dom`'s `logicalSize` option maps pointer coordinates into the game's logical space, so input stays correct under CSS display scaling. The default policy — fixed logical resolution with proportional display scaling — is documented in [docs/architecture.md](docs/architecture.md).
 
 For implementation details, read [ARCHITECTURE.md](ARCHITECTURE.md); for current priorities and planned work, read [ROADMAP.md](ROADMAP.md).
 
@@ -108,7 +109,11 @@ import { createSpriteView, createTextureAssetManager, PixiRenderer } from "@g2w/
 
 const renderer = new PixiRenderer();
 const input = new InputState();
-const domInput = new DomInput(input, { canvas: document.querySelector("canvas")! });
+const domInput = new DomInput(input, {
+  canvas: document.querySelector("canvas")!,
+  // Pointer positions arrive in the game's logical space.
+  logicalSize: { width: 640, height: 360 },
+});
 const assets = createTextureAssetManager();
 const texture = await assets.load("assets/logo.png");
 
@@ -150,6 +155,8 @@ const scenes = new SceneManager({ scenes: { menu, gameplay }, initial: "menu" })
 const game = new Game({
   renderer,
   canvas: document.querySelector<HTMLCanvasElement>("#game")!,
+  width: 640, // logical resolution: the stage space game code uses
+  height: 360,
   onUpdate: (deltaTime) => {
     scenes.update(deltaTime);
     input.endFrame(); // one boundary per frame, after every consumer
@@ -166,6 +173,6 @@ Ownership: the caller owns the input state, the browser adapter, the asset manag
 
 ## What is planned (not implemented yet)
 
-See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Near-term priorities: sprite anchors/pivots and z-ordering (R3). Exploratory: audio, gamepad/touch input, a starter template and CLI, a Three.js adapter, integrations (React, Vue, Effect), and npm publishing.
+See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Near-term priorities: sprite anchors/pivots and z-ordering (R11). Exploratory: audio, gamepad/touch input, a starter template and CLI, a Three.js adapter, integrations (React, Vue, Effect), and npm publishing.
 
 Packages are not published to npm yet; the workspace is for local development and CI.

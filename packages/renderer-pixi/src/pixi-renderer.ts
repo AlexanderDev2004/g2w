@@ -22,6 +22,12 @@ export interface PixiApplicationLike {
   render(): void;
   destroy(rendererDestroyOptions?: RendererDestroyOptions, options?: DestroyOptions): void;
   readonly stage: Container;
+  /**
+   * The PixiJS renderer system. `resize(width, height)` changes the logical
+   * resolution and the drawing buffer; with `autoDensity` it also updates
+   * the canvas's CSS size. It never touches textures.
+   */
+  readonly renderer: { resize(width: number, height: number): void };
 }
 
 /** Options for constructing a {@link PixiRenderer}. */
@@ -92,11 +98,26 @@ export class PixiRenderer implements Renderer {
       );
     }
 
+    // Logical resolution: both dimensions or neither, finite and > 0. When
+    // omitted, PixiJS's own default (800×600) applies — the pre-R3 behavior.
+    if ((options.width === undefined) !== (options.height === undefined)) {
+      throw new RendererError("PixiRenderer requires both width and height, or neither.");
+    }
+    if (
+      (options.width !== undefined && (!Number.isFinite(options.width) || options.width <= 0)) ||
+      (options.height !== undefined && (!Number.isFinite(options.height) || options.height <= 0))
+    ) {
+      throw new RendererError("width and height must be finite numbers greater than zero.");
+    }
+
     const application = this.#createApplication();
     await application.init({
       canvas: options.canvas,
       autoDensity: true,
       autoStart: false,
+      ...(options.width === undefined || options.height === undefined
+        ? {}
+        : { width: options.width, height: options.height }),
       ...(options.backgroundColor === undefined
         ? {}
         : { backgroundColor: options.backgroundColor }),
@@ -104,6 +125,25 @@ export class PixiRenderer implements Renderer {
     });
 
     this.#application = application;
+  }
+
+  /**
+   * Change the logical resolution at runtime. With `autoDensity`, PixiJS
+   * updates both the drawing buffer (`width × height × resolution`) and the
+   * canvas's CSS size; the stage coordinate space becomes exactly
+   * `width × height`. Textures and texture sources are never touched.
+   * Throws {@link RendererError} before initialization or for invalid
+   * dimensions.
+   */
+  resize(width: number, height: number): void {
+    const application = this.#application;
+    if (application === null) {
+      throw new RendererError("PixiRenderer is not initialized.");
+    }
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) {
+      throw new RendererError("width and height must be finite numbers greater than zero.");
+    }
+    application.renderer.resize(width, height);
   }
 
   /**

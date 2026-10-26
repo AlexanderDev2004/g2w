@@ -25,11 +25,11 @@ Core has **zero runtime dependencies** and **no rendering technology imports**. 
 
 ### `@g2w/renderer-pixi`
 
-Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. `createTextureAssetManager()` returns a core `AssetManager<Texture>` that loads textures by URL through PixiJS's `Assets` and is deliberately non-destructive on disposal (see below). `createSpriteView()` turns a core `Sprite2D` model into a PixiJS sprite attached to the stage and synchronizes it through an explicit `sync()` (see below). This is a minimal adapter, not a complete renderer: no scene graph API beyond sprites and the texture loader.
+Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`: async `initialize()` mirrors PixiJS v8's async `Application.init()`, honors the core sizing contract (`width`/`height` logical resolution — both or neither, validated), and `dispose()` destroys the application while leaving a caller-provided canvas in the DOM (`removeView: false`). `resize(width, height)` forwards to PixiJS's renderer resize — buffer and (with `autoDensity`) CSS size update together; textures are never touched. PixiJS's own ticker loop is disabled (`autoStart: false`) — rendering is on demand through `render()`, called by the game loop, and `stage` exposes the root container so applications can add content. `createTextureAssetManager()` returns a core `AssetManager<Texture>` that loads textures by URL through PixiJS's `Assets` and is deliberately non-destructive on disposal (see below). `createSpriteView()` turns a core `Sprite2D` model into a PixiJS sprite attached to the stage and synchronizes it through an explicit `sync()` (see below). This is a minimal adapter, not a complete renderer: no scene graph API beyond sprites and the texture loader.
 
 ### `@g2w/input-dom`
 
-Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative canvas pixels, scaled by the canvas's internal resolution), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
+Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative, scaled into the configured `logicalSize` game space when provided — see the sizing section — otherwise into the canvas's backing pixels), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
 
 ### `@g2w/devtools`
 
@@ -152,6 +152,19 @@ Core provides a minimal game-object layer (see `packages/core/test/game-object.t
 
 Scenes compose collections the same way they compose everything else: the scene (or the game code) creates a collection, calls `objects.update(deltaTime)` from the scene's `update` hook, and destroys it from the scene's `dispose()` hook. Objects update through the existing game loop — there is no second loop, ticker, or scheduler, and `SceneManager` knows nothing about them.
 
+### Renderer sizing — logical resolution, resolution, and display size
+
+R3 defines three distinct sizes and one policy:
+- **Logical resolution** — the coordinate space game code positions content in (the stage space). Set with `width`/`height` on `GameOptions`/`RendererInitOptions`; both or neither, finite and greater than zero — `Game` rejects violations with `GameError` and renderers with `RendererError`. Omitted, the renderer uses its own default (PixiJS's 800×600 for the adapter — the pre-R3 behavior).
+- **Render resolution (drawing buffer)** — `logical × resolution`. With `resolution: 2` and a 640×360 logical size the backing store is 1280×720. `resolution` keeps its existing meaning (device pixel ratio).
+- **Display size** — pure CSS, owned by the application. The PixiJS adapter's `autoDensity` sets the canvas's CSS size to the logical size; applications scale it further (e.g. `max-width: 100%; height: auto` for proportional shrinking) without affecting game coordinates.
+
+The renderer contract gains an optional `resize(width, height)` with the same validation rules: it changes the logical space and drawing buffer at runtime and must never destroy textures or other assets. `PixiRenderer.resize` forwards to PixiJS's `renderer.resize` (which, with `autoDensity`, updates both the buffer and the CSS size); repeated resizes are safe and disposal semantics are unchanged.
+
+**Resize policy (chosen default): fixed logical resolution with proportional display scaling.** The game keeps one stable coordinate space; the page scales the canvas with plain CSS. The demo uses exactly this (`#game { max-width: 100%; height: auto }`). Trade-off: on very wide or very tall viewports the canvas keeps its aspect ratio rather than filling the container; container-driven logical resizing is available through `resize()` for games that want it, and a ResizeObserver-driven policy or letterboxing can be added later without breaking this contract. There is deliberately no framework-managed ResizeObserver yet — none of the current needs require one, and CSS scaling avoids resize loops and observer-lifecycle hazards entirely.
+
+**Pointer coordinates:** `DomInput` accepts an optional `logicalSize` ({ width, height }). When provided, pointer positions are mapped into that space using the canvas's bounding rectangle, so they stay correct under any CSS scaling or offset (including proportional shrinking); when omitted, the pre-R3 mapping into `canvas.width`/`canvas.height` backing pixels applies. Core's `InputState` stays DOM-free — the mapping lives entirely in the browser adapter.
+
 ## Dependency direction
 
 The single most important rule: **core must never depend on a renderer; renderers always depend on core.**
@@ -204,13 +217,14 @@ Current (R2 — game objects, plus the DevTools MVP):
 - The `AssetManager` cache/dedup/ownership semantics and the `@g2w/renderer-pixi` texture loader described above.
 - The `Transform2D`/`Sprite2D` model and the `@g2w/renderer-pixi` sprite view described above.
 - The `GameObject`/`GameObjectCollection` layer described above: claimed registration, snapshot-iterated updates through the existing game loop, and terminal best-effort destroy.
+- The renderer sizing contract described above: logical `width`/`height` with validation, `logical × resolution` drawing buffer, app-owned display size, the optional `resize()`, and the fixed-logical-resolution display policy.
 - The `@g2w/devtools` read-only overlay described above: snapshot-polling observation, explicit input watch lists, a bounded log buffer, and dev-only loading.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
 - The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter, loads its texture through the adapter's asset API, drives its logo sprite through the core sprite model and `sync()`, runs orbiting spark game objects through a `GameObjectCollection` inside the gameplay scene, and keeps all other PixiJS objects at the example boundary.
 
 Provisional (expect to change in later MVPs):
-- The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
+- The exact shape of `RendererInitOptions`; it will likely grow as core learns about backends, display-fit policies (letterboxing, container-driven resizing), and more.
 - The PixiJS adapter's internals; it will be reworked as core grows more rendering features.
 - The `stage` accessor on the adapter: it leaks a PixiJS `Container` type to adapter consumers. Acceptable while the adapter is the only way to draw; a renderer-agnostic display API would replace it.
 - The asset system's single-loader contract: one `AssetManager` instance handles one value type; richer manifests, bulk loading, and per-type loaders are future work.

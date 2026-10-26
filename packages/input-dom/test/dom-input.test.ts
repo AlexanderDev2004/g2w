@@ -171,6 +171,86 @@ describe("DomInput pointer normalization", () => {
   });
 });
 
+describe("DomInput logical coordinate space (R3)", () => {
+  function createWithLogicalSize(canvas: FakeCanvasElement): {
+    input: InputState;
+    domInput: DomInput;
+  } {
+    const input = new InputState();
+    const domInput = new DomInput(input, {
+      canvas: canvas as unknown as HTMLCanvasElement,
+      keyTarget: new FakeTarget(),
+      blurTarget: new FakeTarget(),
+      pointerUpTarget: new FakeTarget(),
+      // The game's stage space: 640×360 logical pixels.
+      logicalSize: { width: 640, height: 360 },
+    });
+    domInput.attach();
+    return { input, domInput };
+  }
+
+  it("maps pointer coordinates into the logical space instead of backing pixels", () => {
+    // Backing resolution 800×750 (640×360 at resolution 1.25), CSS size
+    // 640×360 — what autoDensity produces. The legacy mapping would scale
+    // by 800/640; the logical mapping must not.
+    const canvas = new FakeCanvasElement(800, 750);
+    canvas.setRect({ left: 100, top: 50, width: 640, height: 360 });
+    const { input } = createWithLogicalSize(canvas);
+
+    canvas.dispatchEvent(new FakeDomEvent("pointermove", { clientX: 420, clientY: 230 }));
+
+    expect(input.pointerX).toBe(320);
+    expect(input.pointerY).toBe(180);
+  });
+
+  it("maps into the logical space under proportional CSS display scaling", () => {
+    // Narrow viewport: the 640×360 logical canvas is displayed at 320×180.
+    const canvas = new FakeCanvasElement(640, 360);
+    canvas.setRect({ left: 0, top: 0, width: 320, height: 180 });
+    const { input } = createWithLogicalSize(canvas);
+
+    canvas.dispatchEvent(new FakeDomEvent("pointermove", { clientX: 160, clientY: 90 }));
+
+    expect(input.pointerX).toBe(320);
+    expect(input.pointerY).toBe(180);
+  });
+
+  it("keeps button press positions in the logical space", () => {
+    const canvas = new FakeCanvasElement(800, 750);
+    canvas.setRect({ left: 100, top: 50, width: 640, height: 360 });
+    const { input } = createWithLogicalSize(canvas);
+
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", { button: 0, clientX: 180, clientY: 140 }),
+    );
+
+    expect(input.isButtonDown(0)).toBe(true);
+    expect(input.pointerX).toBe(80);
+    expect(input.pointerY).toBe(90);
+  });
+
+  it("preserves the legacy backing-pixel mapping when logicalSize is omitted", () => {
+    const { input, canvas } = createAttached(); // canvas.width 640, rect 640 at (100, 50)
+
+    canvas.dispatchEvent(new FakeDomEvent("pointermove", { clientX: 164, clientY: 86 }));
+
+    expect(input.pointerX).toBe(64);
+    expect(input.pointerY).toBe(36);
+  });
+
+  it("handles a zero-sized canvas without dividing by zero", () => {
+    const canvas = new FakeCanvasElement(640, 360);
+    canvas.setRect({ left: 100, top: 50, width: 0, height: 0 });
+    const { input } = createWithLogicalSize(canvas);
+
+    canvas.dispatchEvent(new FakeDomEvent("pointermove", { clientX: 130, clientY: 80 }));
+
+    expect(input.hasPointerPosition).toBe(true);
+    expect(input.pointerX).toBe(30);
+    expect(input.pointerY).toBe(30);
+  });
+});
+
 describe("DomInput focus loss", () => {
   it("releases all held keys and buttons when the blur target fires", () => {
     const { input, keyTarget, blurTarget, canvas } = createAttached();

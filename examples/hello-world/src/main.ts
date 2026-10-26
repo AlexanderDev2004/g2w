@@ -48,7 +48,14 @@ try {
   // adapter from @g2w/input-dom. All game logic below reads input only through
   // this state — there are no DOM event handlers in game logic.
   const input = new InputState();
-  const domInput = new DomInput(input, { canvas, keyTarget: window, blurTarget: window });
+  const domInput = new DomInput(input, {
+    canvas,
+    keyTarget: window,
+    blurTarget: window,
+    // Pointer coordinates arrive in the game's logical space (the renderer's
+    // stage coordinates), not the canvas's backing resolution.
+    logicalSize: { width: VIEW_WIDTH, height: VIEW_HEIGHT },
+  });
 
   // The asset path: the app creates and owns one texture asset manager. All
   // game logic loads through this public API — no direct PixiJS Assets calls.
@@ -95,6 +102,12 @@ try {
     renderer,
     canvas,
     backgroundColor: "#1099bb",
+    // Logical resolution: the stage coordinate space all game code uses.
+    // The drawing buffer is width×height×resolution; the canvas's CSS size
+    // (autoDensity) starts at width×height and the page scales it down
+    // proportionally on smaller viewports.
+    width: VIEW_WIDTH,
+    height: VIEW_HEIGHT,
     resolution: window.devicePixelRatio || 1,
     // No second loop: the active scene is updated by the existing game loop,
     // and the input frame boundary sits right after every consumer.

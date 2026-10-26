@@ -78,7 +78,7 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
   2. [x] Deterministic tests cover snapshotting, logging, FPS, input watch lists, and disposal.
   3. [x] Demo wiring is dev-only and absent from production builds.
 
-### R3 — Sprite anchors, pivots, and z-ordering
+### R11 — Sprite anchors, pivots, and z-ordering
 
 **Status:** Planned · **Priority:** P2
 - **Objective:** remove the top-left-pivot limitation and give scenes deterministic layering.
@@ -86,6 +86,19 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **Acceptance criteria:** anchor/pivot in the core model, applied by `sync()`; z-order defined and tested; demo updated.
 
 ## Medium-term
+
+### R3 — Renderer sizing, logical resolution, and viewport
+
+**Status:** Done · **Priority:** P2
+- **Objective:** make canvas dimensions predictable — the game's coordinate space, the drawing buffer, and the on-page display size must be three documented, independently sensible things instead of PixiJS defaults winning silently.
+- **Root cause (verified):** `PixiRenderer.initialize()` never passed `width`/`height`, so PixiJS v8 applied its 800×600 default and overwrote the canvas's HTML attributes; the demo's 640×360 logical space only covered the top-left of the actual stage, and `DomInput` mapped pointers into backing pixels (`canvas.width`), which diverges from logical space whenever resolution ≠ 1.
+- **Resolution (implemented and tested):** the core contract gains optional logical `width`/`height` on `RendererInitOptions`/`GameOptions` (both or neither, finite and > 0; `GameError`/`RendererError` otherwise; omitted keeps the renderer default) and an optional `Renderer.resize(width, height)` with the same rules that never touches textures. `PixiRenderer` forwards both to PixiJS (`Application.init` dimensions, `renderer.resize` for runtime changes) and keeps `autoDensity`, so CSS display size tracks the logical size by default; the display size itself stays application-owned CSS. `DomInput` gains an optional `logicalSize` mapping pointer coordinates into the game space under any CSS scaling or offset. Chosen policy: **fixed logical resolution with proportional display scaling** (plain CSS in the demo) — no ResizeObserver, no resize loops; container-driven resizing is available through `resize()`, and letterboxing/observer-driven policies remain future work.
+- **Evidence:** 28 new deterministic tests — `PixiRenderer` sizing/resize suite (init pass-through with and without dimensions, mixed/zero/negative/non-finite rejection before the application is touched, resize forwarding, pre-init/post-dispose/invalid resize rejection, texture safety across resize and disposal), `Game` sizing validation and pass-through, `DomInput` logical-space mapping (backing-vs-logical divergence, CSS scaling, button positions, legacy default, zero-sized canvas). Full suite: 237 tests across 15 files. Browser-verified: the canvas backing store is 640×360×dpr, CSS display is 640×360 at desktop width and scales down proportionally with no page scrollbars at narrow widths, pointer coordinates read in logical space, zero console errors.
+- **Acceptance criteria:**
+  1. [x] Explicit logical dimensions honored by the renderer (init + runtime resize).
+  2. [x] Logical vs drawing-buffer vs CSS relationship documented.
+  3. [x] Resize behavior predictable and tested; pointer coordinates correct under scaling.
+  4. [x] Demo renders at its intended dimensions without overflow; core stays renderer-agnostic; R1 texture ownership intact.
 
 ### R4 — Audio
 
@@ -111,7 +124,7 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 
 **Status:** Planned · **Priority:** P3
 - **Objective:** `create-g2w` scaffolding for new projects.
-- **Dependencies:** R2–R3 (a usable minimum game framework).
+- **Dependencies:** R2 and R11 (a usable minimum game framework).
 - **Acceptance criteria:** generated project builds, tests, and runs the demo with zero manual fixes.
 
 ## Exploratory
@@ -178,6 +191,6 @@ A technically coherent order for the near-term work — a recommendation, not a 
 1. ~~**R1** — resolve resource ownership and renderer-disposal semantics while the codebase is small.~~ (Done.)
 2. Strengthen the existing example and regression tests as each milestone lands.
 3. **R2** — a minimal renderer-agnostic game-object/display model once it provides clear value.
-4. **R3** — sprite ordering and transform-related features built on R2.
+4. **R11** — sprite ordering and transform-related features built on R2.
 5. Establish a reproducible performance benchmark (see Candidate work) before making any performance claim.
 6. **R8** — evaluate a Three.js adapter only after the core and renderer contracts have been stable for a release cycle.

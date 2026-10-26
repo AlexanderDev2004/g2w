@@ -1,4 +1,4 @@
-import { access, readFile } from "node:fs/promises";
+﻿import { access, readFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -68,6 +68,12 @@ if (typeof core.SpriteError !== "function") {
 }
 if (typeof core.GameObjectCollection !== "function") {
   throw new Error("@g2w/core does not export GameObjectCollection.");
+}
+if (typeof core.AudioManager !== "function") {
+  throw new Error("@g2w/core does not export AudioManager.");
+}
+if (typeof core.AudioError !== "function") {
+  throw new Error("@g2w/core does not export AudioError.");
 }
 
 const inputDom = await import(await entryFile("packages/input-dom"));
@@ -171,7 +177,7 @@ try {
 }
 
 // Exercise the game-object pipeline through the real entry points: a core
-// object registered in a collection, updated once, destroyed — with a fake
+// object registered in a collection, updated once, destroyed â€” with a fake
 // texture (a destroy() flag) proving no cleanup ever destroys it.
 const objectAssets = renderer.createTextureAssetManager({
   load: async () => ({
@@ -217,9 +223,59 @@ try {
   }
 }
 
+// Exercise the audio pipeline through the real entry points: a core
+// AudioManager over an injected fake backend (no browser), loading once,
+// playing twice, stopping all, and disposing terminally.
+const audioWeb = await import(await entryFile("packages/audio-web"));
+if (
+  typeof audioWeb.WebAudioBackend !== "function" ||
+  typeof audioWeb.WebAudioError !== "function"
+) {
+  throw new Error("@g2w/audio-web does not export WebAudioBackend/WebAudioError.");
+}
+let audioBackendDisposed = false;
+const audioBackendLoads = [];
+const audio = new core.AudioManager({
+  backend: {
+    load: async (key) => {
+      audioBackendLoads.push(key);
+      return {
+        play: (options) => {
+          if (options?.volume !== 0.5) {
+            throw new audioWeb.WebAudioError("unexpected play options");
+          }
+          return { stopped: false, stop() {} };
+        },
+      };
+    },
+    dispose: () => {
+      audioBackendDisposed = true;
+    },
+  },
+});
+const laser = await audio.load("fake/laser.wav");
+const laserPlayback = await audio.play("fake/laser.wav", { volume: 0.5 });
+if (audioBackendLoads.length !== 1 || laserPlayback.stopped !== false) {
+  throw new Error("@g2w/core: AudioManager did not load once and start one playback.");
+}
+laser.play({ volume: 0.5 });
+audio.stopAll();
+audio.dispose();
+if (!audioBackendDisposed) {
+  throw new Error("@g2w/core: AudioManager.dispose did not release the backend.");
+}
+try {
+  audio.load("fake/laser.wav");
+  throw new Error("Loading from a disposed AudioManager should throw.");
+} catch (error) {
+  if (!(error instanceof core.AudioError)) {
+    throw new Error("Loading from a disposed AudioManager should throw AudioError.");
+  }
+}
+
 // Exercise the DevTools pipeline through the real entry points, using the
 // same fake DOM approach as the unit tests: build the overlay, feed it a
-// collection snapshot, and dispose it — proving the package's public surface
+// collection snapshot, and dispose it â€” proving the package's public surface
 // works and that disposal never touches the sources it read from.
 const devtools = await import(await entryFile("packages/devtools"));
 if (typeof devtools.DevTools !== "function" || typeof devtools.createDevTools !== "function") {
@@ -323,5 +379,5 @@ await pixi.dispose().then(
 );
 
 console.log(
-  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi, @g2w/devtools (incl. asset + sprite + game-object + devtools API)",
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi, @g2w/audio-web, @g2w/devtools (incl. asset + sprite + game-object + audio + devtools API)",
 );

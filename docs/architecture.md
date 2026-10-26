@@ -19,6 +19,7 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `AssetManager` / `AssetLoader` / `AssetManagerOptions` / `AssetError` — the renderer-agnostic asset cache (see below).
 - `Transform2D` / `Anchor2D` / `Sprite2D` / `Sprite2DInit` / `Transform2DInit` / `Anchor2DInit` — the renderer-agnostic 2D transform and sprite model (see below).
 - `GameObject` / `GameObjectCollection` — the minimal renderer-agnostic game-object layer (see below).
+- `AudioManager` / `AudioBackend` / `Sound` / `SoundPlayback` / `SoundPlayOptions` / `AudioError` — the renderer-agnostic audio contract (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
 Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
@@ -30,6 +31,10 @@ Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`
 ### `@g2w/input-dom`
 
 Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative, scaled into the configured `logicalSize` game space when provided — see the sizing section — otherwise into the canvas's backing pixels), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
+
+### `@g2w/audio-web`
+
+Implements the browser side of the audio system on top of the core contract. `WebAudioBackend` implements the core `AudioBackend` shape: it downloads sound files through an injectable `fetch`, decodes them through an injectable `AudioContext`, and hands out `Sound` values that start real Web Audio playbacks (`AudioBufferSourceNode` → `GainNode` → destination) with volume and looping. `resume()` exists for the browser autoplay policy: a fresh context starts `suspended`, `play()` on a suspended context throws `WebAudioError` instead of starting silently inaudible playback, and `resume()` must be called from a real user-gesture handler. `dispose()` closes the context (at most once, idempotent), which reclaims every decoded buffer. The package depends only on `@g2w/core` and never the other way around.
 
 ### `@g2w/devtools`
 
@@ -167,6 +172,18 @@ The renderer contract gains an optional `resize(width, height)` with the same va
 
 **Pointer coordinates:** `DomInput` accepts an optional `logicalSize` ({ width, height }). When provided, pointer positions are mapped into that space using the canvas's bounding rectangle, so they stay correct under any CSS scaling or offset (including proportional shrinking); when omitted, the pre-R3 mapping into `canvas.width`/`canvas.height` backing pixels applies. Core's `InputState` stays DOM-free — the mapping lives entirely in the browser adapter.
 
+### `AudioManager` — audio, playbacks, and ownership
+
+Core provides a small, renderer-agnostic audio contract (`packages/core/test/audio-manager.test.ts`) following the asset-manager pattern:
+- **`AudioBackend`** is the injected, browser-free loader contract: `load(key)` returns a `Promise<Sound>` and optional `dispose()` releases backend resources. Everything platform-specific lives behind it, exactly like the asset system's injected loader.
+- **`AudioManager`** composes a non-owning core `AssetManager<Sound>`, so caching, concurrent-request deduplication, and retryable failures are inherited — not reimplemented. `play(key, options?)` loads (usually a cache hit), starts one playback, and tracks the returned `SoundPlayback`; invalid options (non-finite or negative `volume`) throw `AudioError` before any backend call, and backend playback refusals propagate unchanged.
+- **`SoundPlayback`** is a handle with idempotent `stop()` and a `stopped` flag that also flips on natural completion, so the manager's active set stays bounded (finished playbacks are pruned on the next `play()`).
+- **Ownership:** the manager owns _playback lifetimes_, never sounds. `dispose()` is terminal and idempotent: it stops every active playback, clears the cache, and calls `backend.dispose()` once if provided. It **never destroys `Sound` values** — decoded audio is caller/backend-owned and may be shared (the same file loaded by two managers is one decoded buffer in the browser, and neither manager may destroy it for the other). Backend disposal errors propagate to the disposer.
+- **Autoplay policy is the backend's documented contract:** core never hides a backend refusal. The Web Audio adapter throws `WebAudioError` on `play()` against a suspended context; the application resumes from a user gesture (see `@g2w/audio-web` above).
+- **No second loop and no hidden timers:** audio is fire-and-forget, driven entirely by the backend.
+
+Intentionally unsupported: mixers, spatial/3D audio, adaptive music, streaming, and autoplay queues (roadmap-level future work, not stubs).
+
 ## Dependency direction
 
 The single most important rule: **core must never depend on a renderer; renderers always depend on core.**
@@ -198,6 +215,7 @@ Why core stays renderer-agnostic:
 - `packages/renderer-pixi/test/assets.test.ts` asserts the texture asset manager composes with the core `AssetManager` and that shared textures are destroyed exactly once.
 - `packages/input-dom/test/package.test.ts` asserts the DOM input adapter declares `@g2w/core` as a dependency and composes with the core `InputState`.
 - `packages/devtools/test/package.test.ts` asserts the DevTools package declares only `@g2w/core` as a dependency and composes with the core `SceneManager`/`InputState` through the public entry points.
+- `packages/audio-web/test/package.test.ts` asserts the audio backend declares only `@g2w/core` as a dependency and implements the core `AudioBackend` contract through the public entry points.
 - `pnpm verify:exports` (also run in CI) loads the built packages through their real entry points.
 
 ## Tooling decisions

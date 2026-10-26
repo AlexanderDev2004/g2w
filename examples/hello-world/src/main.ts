@@ -1,4 +1,6 @@
+import { WebAudioBackend } from "@g2w/audio-web";
 import {
+  AudioManager,
   Game,
   type GameObject,
   GameObjectCollection,
@@ -67,6 +69,17 @@ try {
   // texture instance, no second load.
   const logoFromCache = await assets.load(LOGO_URL);
   const logoWasCached = logoFromCache === logo;
+
+  // The audio path: a core AudioManager over the Web Audio backend. All game
+  // logic plays through the public audio API — no direct AudioContext calls
+  // in game logic. The context starts suspended under browser autoplay
+  // policies; decoding works anyway, and the first resume() happens inside
+  // the menu click handler below (a real user gesture) before the first
+  // playback, so playback never fails silently.
+  const audioBackend = new WebAudioBackend({ context: new AudioContext() });
+  const audio = new AudioManager({ backend: audioBackend });
+  const BEEP_URL = "assets/beep.wav";
+  await audio.load(BEEP_URL);
   loadingBox.hidden = true;
 
   // PixiJS objects live here, at the adapter boundary: @g2w/core scenes are
@@ -220,6 +233,14 @@ try {
       const cacheNote = logoWasCached ? "texture cache: hit" : "texture cache: miss";
       menuHint.text = `click to play — ${pointer} — ${cacheNote}`;
       if (input.wasButtonPressed(0)) {
+        // resume() runs inside the click handler — a real user gesture, which
+        // is what the browser autoplay policy requires. The beep is already
+        // loaded (cache hit), so the playback starts as soon as the context
+        // runs. Failures surface through the demo error path, never silently.
+        void audioBackend
+          .resume()
+          .then(() => audio.play(BEEP_URL))
+          .catch(showError);
         scenes.goTo("gameplay");
       }
     },
@@ -329,14 +350,16 @@ try {
   window.addEventListener("pagehide", () => {
     // Adapter first (no further events reach the state), then scenes (they
     // destroy their sprites and remove their children from the stage), then
-    // the game (releases the renderer), and finally the asset manager (it
-    // releases its cache). Neither the manager nor the renderer ever destroys
-    // textures — the renderer owns display objects only, and the manager's
-    // policy is non-destructive — so the page unload reclaims them.
+    // audio (stops playback and closes the AudioContext), then the game
+    // (releases the renderer), and finally the asset manager (it releases
+    // its cache). Neither the audio stack nor the managers nor the renderer
+    // ever destroys textures — the renderer owns display objects only, and
+    // the asset policy is non-destructive — so the page unload reclaims them.
     try {
       devtools?.dispose(); // DevTools only ever detaches itself.
       domInput.dispose();
       scenes.dispose();
+      audio.dispose();
     } catch (error: unknown) {
       console.error(error);
     }

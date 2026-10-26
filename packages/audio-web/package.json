@@ -1,0 +1,27 @@
+{
+  "name": "@g2w/audio-web",
+  "version": "0.1.0",
+  "description": "Web Audio (browser) backend for the @g2w/core AudioManager: decodes sound files, starts playbacks, and owns the AudioContext lifecycle.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@g2w/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -107,10 +107,15 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 
 ### R4 — Audio
 
-**Status:** Planned · **Priority:** P2
+**Status:** Done · **Priority:** P2
 - **Objective:** a small, ownership-explicit audio API following the asset-manager pattern (browser adapter, core contract).
 - **Dependencies:** R1 pattern decision.
-- **Acceptance criteria:** core contract with zero browser APIs; adapter package with tested attach/dispose; docs state autoplay-policy implications.
+- **Resolution (implemented and tested):** `@g2w/core` gains `AudioManager` plus `AudioBackend`/`Sound`/`SoundPlayback`/`SoundPlayOptions` and `AudioError` (`packages/core/src/audio.ts`, `packages/core/src/audio-error.ts`). The manager composes a non-owning core `AssetManager<Sound>`, so caching, concurrent-request deduplication, and retryable failures are inherited rather than reimplemented; `play(key, options?)` starts a tracked playback (`volume` validated as finite ≥ 0, `loop`), `stopAll()` stops every active playback, and `dispose()` is terminal and idempotent — it stops playbacks, clears the cache, and calls `backend.dispose()` once. Ownership: the manager owns _playback lifetimes_, never sounds — `Sound` values are never destroyed, so decoded audio can be shared between managers or subsystems. New package `@g2w/audio-web` (depends only on `@g2w/core`): `WebAudioBackend` downloads and decodes through an injectable `fetch` and `AudioContext`, starts `AudioBufferSourceNode` → `GainNode` playbacks, and `dispose()` closes the context at most once. Autoplay policy is explicit: `play()` on a suspended context throws `WebAudioError` (documented, not silent), and `resume()` must be called from a user-gesture handler. No second loop, no hidden timers. The demo plays a short generated beep on the menu→gameplay click (the resume happens inside the click handler), and teardown disposes audio between scenes and the game.
+- **Evidence:** 28 new deterministic tests — 14 core (`AudioManager` load/cache/dedup, retry after failure, option forwarding and validation, `stopAll` exactly-once, finished-playback pruning, terminal idempotent disposal, non-owning sound policy, backend-refusal propagation, backend disposal errors) and 14 adapter (decode via fake context/fetch, non-OK fetch rejection with retry, source/gain wiring, volume/loop application, suspended-context `play()` rejection, `resume()` behavior, natural-completion flag, idempotent `stop()`/`dispose()`, core `AudioBackend` contract composition, core-only dependency boundary). `scripts/verify-exports.mjs` asserts the new exports and exercises the audio pipeline through the real entry points. Full suite: 282 tests across 18 files. Docs updated: `README.md`, `docs/architecture.md`, `ARCHITECTURE.md`, `examples/hello-world/README.md`, this file.
+- **Acceptance criteria:**
+  1. [x] Core contract with zero browser APIs (`AudioManager`/`AudioBackend`/`Sound`; core architecture tests still enforce no browser globals).
+  2. [x] Adapter package with tested attach/dispose (`@g2w/audio-web`: injectable context, `resume()`, at-most-once idempotent `dispose()`).
+  3. [x] Docs state autoplay-policy implications (suspended context, user-gesture resume, non-silent failure).
 
 ### R5 — Gamepad and touch input
 

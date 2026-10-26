@@ -18,6 +18,7 @@ pnpm workspace (see [pnpm-workspace.yaml](pnpm-workspace.yaml)):
 | `@g2w/core`                | [packages/core](packages/core/package.json)                   | Renderer-agnostic contracts and runtime (zero runtime dependencies)              |
 | `@g2w/renderer-pixi`       | [packages/renderer-pixi](packages/renderer-pixi/package.json) | PixiJS 8 implementation of the renderer contract + texture loader + sprite views |
 | `@g2w/input-dom`           | [packages/input-dom](packages/input-dom/package.json)         | Browser event adapter feeding core `InputState`                                  |
+| `@g2w/audio-web`           | [packages/audio-web](packages/audio-web/package.json)         | Web Audio backend implementing the core `AudioBackend` contract                  |
 | `@g2w/example-hello-world` | [examples/hello-world](examples/hello-world/package.json)     | Vite browser demo consuming only public package exports                          |
 
 ## 3. Dependency direction
@@ -120,7 +121,9 @@ The policies compose: exactly one framework-wide texture lifetime exists — the
 
 ## 11. Error handling and disposal
 
-Every package defines one narrow error class (`GameError`, `SceneError`, `RendererError`, `AssetError`, `DomInputError`, `SpriteViewError`); hook/loader errors are never wrapped — they propagate unchanged to the caller of the triggering method. Disposal everywhere is terminal and idempotent; multi-target cleanup (scene manager, asset manager) is best-effort with the first error rethrown and several failures aggregated as `AggregateError`.
+Every package defines one narrow error class (`GameError`, `SceneError`, `RendererError`, `AssetError`, `AudioError`, `DomInputError`, `SpriteViewError`, `WebAudioError`); hook/loader errors are never wrapped — they propagate unchanged to the caller of the triggering method. Disposal everywhere is terminal and idempotent; multi-target cleanup (scene manager, asset manager) is best-effort with the first error rethrown and several failures aggregated as `AggregateError`.
+
+**Audio ownership (R4):** `AudioManager` owns _playback lifetimes_, never sounds. `dispose()` stops every active playback, clears its cache, and releases backend resources (`backend.dispose()` — in `@g2w/audio-web`, closing the `AudioContext`) at most once, but it never destroys `Sound` values: decoded audio is caller/backend-owned and may be shared between managers or subsystems, mirroring the non-destructive texture policy. Autoplay policy is part of the contract: `play()` against a suspended context throws `WebAudioError` (never silently inaudible playback); the application calls `resume()` from a user-gesture handler.
 
 ## 12. Public API and exports
 

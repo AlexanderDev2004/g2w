@@ -37,6 +37,8 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **MVP 1F — Scene ownership hardening** `Done` `P2`: permanent one-manager-per-scene claim enforced at registration.
 - **CI & supply-chain hardening** `Done` `P1`: least-privilege workflow permissions (`contents: read`), third-party Actions pinned to verified commit SHAs, Dependabot version updates (Actions + npm ecosystems, weekly), CONTRIBUTING.md with AI-contribution policy.
 - **R1 — Renderer-disposal texture semantics** `Done` `P0`: `PixiRenderer.dispose()` destroys stage display objects only, never textures or texture sources; the single framework-wide texture lifetime is the non-destructive asset policy, pinned by regression tests.
+- **R2 — Game objects** `Done` `P1`: `GameObject` + `GameObjectCollection` in core — a claimed, snapshot-iterated update/destroy registry that runs through the existing game loop, with explicit ownership, terminal idempotent destroy, and no second loop.
+- **DevTools MVP — read-only runtime overlay** `Done` `P2`: `@g2w/devtools` — an opt-in, dev-only DOM overlay observing scenes (via a new `SceneManager.keys` accessor), game objects and transforms (via a new `GameObjectCollection.objects()` snapshot accessor), explicitly watched input keys/buttons, FPS/frame time, and a bounded runtime log; snapshot-polling only, never mutating or disposing the runtime, and excluded from production builds.
 
 ## Near-term (current focus)
 
@@ -54,14 +56,27 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 
 ### R2 — Game objects / display model
 
-**Status:** Planned · **Priority:** P1
-- **Objective:** a minimal renderer-agnostic game-object layer above sprites (positioning helpers, z-order, simple parenting) so games stop hand-managing arrays.
-- **Scope:** deliberately minimal; no full ECS. Extends `Sprite2D`/`Transform2D`; keeps ownership rules explicit.
-- **Dependencies:** R1 (texture semantics settled).
+**Status:** Done · **Priority:** P1
+- **Objective:** a minimal renderer-agnostic game-object layer so games stop hand-managing arrays.
+- **Resolution (implemented and tested):** `@g2w/core` exports `GameObject` (a `Transform2D` plus optional `update(deltaTime)` and `destroy()` hooks) and `GameObjectCollection`. Deliberately minimal — no ECS, no scene graph, no parent/child transforms. A collection claims each object (one collection at a time, re-registrable after `remove`; destroyed objects are permanently unregistrable), duplicate or cross-collection registration throws `SceneError`, `update(deltaTime)` iterates a snapshot driven by the existing game loop (adds take effect next frame, removals immediately, even mid-iteration), and `destroy()` is terminal, idempotent, and best-effort: it destroys only still-registered objects exactly once in insertion order and reports hook failures as an `AggregateError` (or rethrows a single one). Objects share their sprite model's `Transform2D` by reference; display association stays with `Sprite2D`/`createSpriteView`, and object cleanup never touches shared textures (pinned by a renderer-adapter regression test).
+- **Evidence:** 25 deterministic tests in `packages/core/test/game-object.test.ts` cover registration/claiming, update order and mid-update add/remove, error propagation, nested-update rejection, destroy idempotency and aggregation, `SceneManager` and `Sprite2D` integration; `packages/renderer-pixi/test/sprite-view.test.ts` pins that collection cleanup never destroys the shared texture; `scripts/verify-exports.mjs` exercises the object pipeline through the real package entry points.
 - **Acceptance criteria:**
-  1. Public API documented and exported from `@g2w/core`.
-  2. Tests cover lifecycle, ownership, and update order.
-  3. Demo demonstrates it; no second loop introduced.
+  1. [x] Public API documented and exported from `@g2w/core`.
+  2. [x] Tests cover lifecycle, ownership, and update order.
+  3. [x] Demo demonstrates it; no second loop introduced.
+
+### DevTools MVP — read-only runtime overlay
+
+**Status:** Done · **Priority:** P2
+- **Objective:** let developers and AI agents inspect a running g2w game without instrumenting game code or mutating runtime state.
+- **Resolution (implemented and tested):** new `@g2w/devtools` package (depends only on `@g2w/core`). `DevTools` takes plain references — `scenes`, optional `objects` (a collection or a getter), `input` with explicit `watchKeys`/`watchButtons` watch lists, optional `logLimit` and `refreshHz` — and polls read-only snapshots at a fixed rate into a fixed-position DOM panel: scene explorer, object list with positional `#N` labels, a transform inspector, FPS/frame time from a recent-samples ring buffer, a watched-input monitor, and a bounded drop-oldest log buffer that also records observed scene transitions. Strictly observational: it never mutates or disposes the runtime; its own `dispose()` is terminal and idempotent and removes only the panel and its refresh tick. The demo loads it dynamically behind `import.meta.env.DEV`, so production builds exclude it (verified by scanning the built bundle and by a live production smoke run). Supporting core additions, both exported and tested: `GameObjectCollection.objects()` (snapshot accessor, throws `SceneError` after destroy) and `SceneManager.keys` (fresh readonly array of registered scene keys). A disabled "3D — Coming Soon" placeholder marks the future 3D inspector.
+- **Evidence:** 31 deterministic tests in `packages/devtools/test/` (fake DOM document + injected scheduler — no browser, no real timers) including 2 package-boundary tests; new core tests for the snapshot accessor and the `keys` getter; `pnpm verify:exports` exercises the DevTools pipeline through the real entry points; the full suite is 209 tests across 15 files. A real-browser smoke run (headed Chrome via CDP) exercised menu → gameplay → object selection → menu → re-entry with the overlay open, the close button, and captured the four `docs/screenshots/hello-world-*.png` images with zero console or page errors; a separate production-bundle smoke run verified the game runs with DevTools fully absent.
+- **Screenshot validity:** the four `docs/screenshots/hello-world-*.png` captures come from a headed, on-screen Chrome session and show the fully rendered page — WebGL canvas included (menu blue background, gameplay square and sparks, page hints) plus the DevTools overlay. Headless/protocol captures of the same page return a black canvas (a canvas created without `preserveDrawingBuffer` cannot be read back through CDP screenshots), which is a capture-tooling limitation, not a rendering defect: an in-page `drawImage` readback of the live canvas returns real frame content, and a production-bundle smoke run confirmed the game renders and animates with DevTools excluded.
+- **Intentionally out of scope:** editing or mutating runtime state, stable object IDs, an unwatched-input view, tapping the game's `deltaTime`, and any 3D inspection beyond the placeholder.
+- **Acceptance criteria:**
+  1. [x] Read-only overlay built on the public core API; core gains no rendering or DOM dependencies.
+  2. [x] Deterministic tests cover snapshotting, logging, FPS, input watch lists, and disposal.
+  3. [x] Demo wiring is dev-only and absent from production builds.
 
 ### R3 — Sprite anchors, pivots, and z-ordering
 
@@ -124,7 +139,7 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 
 Checklist for the current milestone. Each box is checked only with evidence from the current codebase (tests, commands, or the headless browser smoke run).
 - [x] Dependencies install with `pnpm install --frozen-lockfile` (exit 0, verified this milestone).
-- [x] Type checking, formatting/linting, and tests pass (`pnpm typecheck`, `pnpm check`, `pnpm test` — 142/142).
+- [x] Type checking, formatting/linting, and tests pass (`pnpm typecheck`, `pnpm check`, `pnpm test` — 209/209).
 - [x] The game runtime initializes, updates, renders, and shuts down (Game lifecycle tests + headless smoke).
 - [x] Scene transitions and lifecycle behavior work correctly (29+ scene-manager tests: ordering, deferral, error recovery, disposal; demo menu ↔ gameplay verified in the smoke run).
 - [x] Keyboard and pointer input behave as documented (input tests + demo smoke run).

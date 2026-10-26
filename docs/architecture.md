@@ -18,6 +18,7 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `InputState` — the DOM-free keyboard and pointer state machine (see below).
 - `AssetManager` / `AssetLoader` / `AssetManagerOptions` / `AssetError` — the renderer-agnostic asset cache (see below).
 - `Transform2D` / `Sprite2D` / `Sprite2DInit` / `Transform2DInit` — the renderer-agnostic 2D transform and sprite model (see below).
+- `GameObject` / `GameObjectCollection` — the minimal renderer-agnostic game-object layer (see below).
 - `FrameScheduler` / `FrameRequestCallback` — the internal-facing scheduling abstraction, injectable for deterministic tests.
 
 Core has **zero runtime dependencies** and **no rendering technology imports**. It owns scenes and other framework services, but every rendering capability stays behind the contract.
@@ -29,6 +30,10 @@ Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`
 ### `@g2w/input-dom`
 
 Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative canvas pixels, scaled by the canvas's internal resolution), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
+
+### `@g2w/devtools`
+
+A read-only developer overlay for debugging running games. `DevTools` is constructed with plain references — `scenes` (a `SceneManager`), optional `objects` (a `GameObjectCollection` or a function returning one), and `input` with explicit `watchKeys`/`watchButtons` watch lists — and polls immutable snapshots at a fixed refresh rate (default 10 Hz, injectable scheduler for tests). It renders a fixed-position DOM panel: scene explorer, object list with positional `#N` labels, a transform inspector for the selected object, FPS/frame time computed from a ring buffer of recent frame samples, a watched-input monitor, and a bounded, drop-oldest log buffer that also records scene transitions as they are observed. It is strictly observational: it never mutates the runtime and never disposes it — its own `dispose()` only removes the panel and stops its refresh tick (a single injected `requestAnimationFrame` schedule). `open()`/`close()`/`toggle()` are idempotent; after `dispose()` every method throws `DevToolsError`. The package depends only on `@g2w/core` (plus DOM APIs, injected for tests) and is meant to be loaded only in development: the demo imports it dynamically behind `import.meta.env.DEV`, so production builds exclude it entirely. A disabled "3D — Coming Soon" button marks the future 3D inspector.
 
 ### `Game` — lifecycle and frame loop
 
@@ -133,7 +138,19 @@ Core provides a minimal, renderer-independent 2D sprite model (see `packages/cor
 
 Ownership: the caller owns the **model**; whoever creates a **view** owns it and disposes it (typically the owning scene's `dispose()` hook); the **texture** is owned by nobody and lives for the session. Because `enter`/`exit` pair per activation, scenes that toggle `visible` through the model (the demo's approach) reuse one view across transitions without duplicating display objects; a scene that instead creates views in `enter()` must dispose them in `exit()`.
 
-Intentionally unsupported: parent/child transform hierarchies, anchors/pivots, z-ordering, tint, blend modes, animation timelines, entity components, and renderer-independent scene graphs.
+Intentionally unsupported: parent/child transform hierarchies, anchors/pivots, z-ordering, tint, blend modes, animation timelines, and renderer-independent scene graphs (the minimal `GameObject` layer below does not change this — it adds no display semantics of its own).
+
+### `GameObject` / `GameObjectCollection` — the minimal game-object layer
+
+Core provides a minimal game-object layer (see `packages/core/test/game-object.test.ts`) so games stop hand-managing sprite arrays — deliberately **not** an ECS or a scene graph:
+- **`GameObject`** is a plain object: a `Transform2D` plus an optional `update(deltaTime)` hook and an optional `destroy()` hook. There is no base class, no components, and no display contract — an object associates itself with rendering by sharing its `Sprite2D` model's transform (mutating one moves both).
+- **`GameObjectCollection`** is a registry with `add`, `remove`, `update(deltaTime)`, `destroy()`, and a `size` getter. Its contract:
+  - **Claiming:** a collection claims each object; the same object cannot be registered in two collections (or twice in one collection) — both throw `SceneError`. A removed object may be registered again; an object destroyed through a collection may not.
+  - **Updates:** `update(deltaTime)` calls `update` on every registered object in insertion order, iterated over a snapshot. An object added during the update starts next frame; an object removed during the update — including one removing itself mid-callback — is skipped for the rest of that frame and gone afterwards. Calling `update` reentrantly from inside an update throws `SceneError`. Hook errors propagate unwrapped to the caller (typically the scene update).
+  - **Ownership and destroy:** the collection owns only the _registration_, never the object's external resources. `destroy()` is terminal, idempotent, and best-effort: it removes every still-registered object and calls each `destroy` hook exactly once, in insertion order. A single hook failure is rethrown; multiple failures are reported as an `AggregateError` after all hooks ran. The collection never touches textures, sprite views, or anything else it does not own — a `destroy` hook releases exactly what its own object created (in the demo, the object's sprite view).
+  - **After destroy:** the collection is dead — `add`, `remove`, and `update` all throw `SceneError`.
+
+Scenes compose collections the same way they compose everything else: the scene (or the game code) creates a collection, calls `objects.update(deltaTime)` from the scene's `update` hook, and destroys it from the scene's `dispose()` hook. Objects update through the existing game loop — there is no second loop, ticker, or scheduler, and `SceneManager` knows nothing about them.
 
 ## Dependency direction
 
@@ -165,6 +182,7 @@ Why core stays renderer-agnostic:
 - `packages/renderer-pixi/test/pixi-renderer.test.ts` asserts the adapter declares `@g2w/core` as a dependency and that core does not depend back on the adapter.
 - `packages/renderer-pixi/test/assets.test.ts` asserts the texture asset manager composes with the core `AssetManager` and that shared textures are destroyed exactly once.
 - `packages/input-dom/test/package.test.ts` asserts the DOM input adapter declares `@g2w/core` as a dependency and composes with the core `InputState`.
+- `packages/devtools/test/package.test.ts` asserts the DevTools package declares only `@g2w/core` as a dependency and composes with the core `SceneManager`/`InputState` through the public entry points.
 - `pnpm verify:exports` (also run in CI) loads the built packages through their real entry points.
 
 ## Tooling decisions
@@ -178,16 +196,18 @@ Why core stays renderer-agnostic:
 
 ## Current vs provisional
 
-Current (MVP 1E):
+Current (R2 — game objects, plus the DevTools MVP):
 - The `Renderer` contract (including the optional `render()` hook) and the dependency direction it enforces.
 - The `Game` lifecycle state model, frame scheduling, and delta-time semantics described above.
 - The `Scene` contract and `SceneManager` lifecycle, transition, error, and disposal semantics described above.
 - The `InputState` input state machine and its frame, focus-loss, and pointer-leave semantics described above, with the `@g2w/input-dom` browser adapter.
 - The `AssetManager` cache/dedup/ownership semantics and the `@g2w/renderer-pixi` texture loader described above.
 - The `Transform2D`/`Sprite2D` model and the `@g2w/renderer-pixi` sprite view described above.
+- The `GameObject`/`GameObjectCollection` layer described above: claimed registration, snapshot-iterated updates through the existing game loop, and terminal best-effort destroy.
+- The `@g2w/devtools` read-only overlay described above: snapshot-polling observation, explicit input watch lists, a bounded log buffer, and dev-only loading.
 - PixiJS 8 async lifecycle handling, on-demand rendering, and dispose semantics (canvas stays in the DOM).
 - ESM-only packages with `exports` maps pointing at `dist/`.
-- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter, loads its texture through the adapter's asset API, drives its logo sprite through the core sprite model and `sync()`, and keeps all other PixiJS objects at the example boundary.
+- The hello-world Vite demo as the reference consumer of the public API; it renders scene content through the adapter, loads its texture through the adapter's asset API, drives its logo sprite through the core sprite model and `sync()`, runs orbiting spark game objects through a `GameObjectCollection` inside the gameplay scene, and keeps all other PixiJS objects at the example boundary.
 
 Provisional (expect to change in later MVPs):
 - The exact shape of `RendererInitOptions`; it will likely grow as core learns about sizing, scaling, and backends.
@@ -196,4 +216,6 @@ Provisional (expect to change in later MVPs):
 - The asset system's single-loader contract: one `AssetManager` instance handles one value type; richer manifests, bulk loading, and per-type loaders are future work.
 - The texture loader's non-destructive policy: textures from PixiJS's shared `Assets` cache live for the session (no manager-driven destruction); if texture churn ever matters for a real game, cache eviction or explicit `Assets.unload` guidance can be added without breaking the current API.
 - The sprite model's minimal scope: `Sprite2D` covers position/rotation/scale/visible/alpha; anchors, z-ordering, tint, hierarchies, and more are expected to grow the model later, and the `stage` accessor may be superseded by a broader renderer-agnostic display API.
+- The game-object layer's minimal scope: `GameObject` is a transform plus update/destroy hooks; components, parent/child hierarchies, query systems, and automatic registration (e.g. by scenes or managers) are future work — composition stays explicit for now.
+- The DevTools overlay's minimal scope: read-only snapshots with positional `#N` object labels (not stable IDs), watched-keys-only input, and no tap into the game's `deltaTime` (FPS is measured from the overlay's own frame samples); selection, editing, and stable object identity are future work.
 - The test aliasing setup; it may move to package-level configs when the workspace grows.

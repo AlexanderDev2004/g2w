@@ -126,6 +126,15 @@ export class SceneManager {
   }
 
   /**
+   * The registered scene names, in registration order. Read-only view for
+   * diagnostics and inspection tools (e.g. `@g2w/devtools`); the returned
+   * array is a fresh copy.
+   */
+  get keys(): readonly string[] {
+    return [...this.#entries.keys()];
+  }
+
+  /**
    * Activate the initial scene (`init` if needed, then `enter`). Throws
    * {@link SceneError} if the manager is started or disposed; a failed
    * activation leaves the manager unstarted so `start()` may be retried.

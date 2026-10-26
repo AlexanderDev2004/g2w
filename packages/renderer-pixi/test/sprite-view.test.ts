@@ -1,5 +1,5 @@
-import { Sprite2D, Transform2D } from "@g2w/core";
-import { Container, Texture } from "pixi.js";
+import { type GameObject, GameObjectCollection, Sprite2D, Transform2D } from "@g2w/core";
+import { Container, Texture, TextureSource } from "pixi.js";
 import { describe, expect, it } from "vitest";
 import { createSpriteView, SpriteViewError } from "../src/index.js";
 
@@ -194,5 +194,42 @@ describe("SpriteView texture safety with real PixiJS objects", () => {
 
     expect(texture.destroyed).toBe(false);
     expect(texture.source.destroyed).toBe(false);
+  });
+
+  it("game object cleanup through a collection never destroys the shared texture", () => {
+    // R2 + R1 boundary: an object's destroy hook releases only what the
+    // object itself created (its view); the texture — shared here with a
+    // second sprite that outlives the first object — is never destroyed by
+    // object, view, or collection cleanup.
+    //
+    // A real Texture is used deliberately: Sprite's constructor copies plain
+    // fake-texture properties onto the instance, so a fake with its own
+    // destroy() method shadows Sprite.destroy and cannot exercise the real
+    // destroy path.
+    const { renderer } = fakeRenderer();
+    const texture = new Texture({ source: new TextureSource({ width: 4, height: 4 }) });
+    const sprite = new Sprite2D<Texture>({ texture });
+    const view = createSpriteView({ sprite, renderer });
+    const otherSprite = new Sprite2D<Texture>({ texture });
+    const otherView = createSpriteView({ sprite: otherSprite, renderer });
+
+    const object: GameObject = {
+      transform: sprite.transform,
+      update() {},
+      destroy() {
+        view.dispose();
+      },
+    };
+    const collection = new GameObjectCollection();
+    collection.add(object);
+    collection.update(1 / 60);
+    collection.destroy();
+
+    expect(view.disposed).toBe(true);
+    expect(otherView.disposed).toBe(false);
+    expect(texture.destroyed).toBe(false);
+    expect(texture.source.destroyed).toBe(false);
+    // The surviving consumer still holds a valid texture.
+    expect(otherSprite.texture).toBe(texture);
   });
 });

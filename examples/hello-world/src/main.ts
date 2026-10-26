@@ -1,7 +1,22 @@
-import { Game, InputState, type Scene, SceneManager, Sprite2D, Transform2D } from "@g2w/core";
+import {
+  Game,
+  type GameObject,
+  GameObjectCollection,
+  InputState,
+  type Scene,
+  SceneManager,
+  Sprite2D,
+  Transform2D,
+} from "@g2w/core";
+import type { DevTools } from "@g2w/devtools";
 import { DomInput } from "@g2w/input-dom";
-import { createSpriteView, createTextureAssetManager, PixiRenderer } from "@g2w/renderer-pixi";
-import { Graphics, Text } from "pixi.js";
+import {
+  createSpriteView,
+  createTextureAssetManager,
+  PixiRenderer,
+  type SpriteView,
+} from "@g2w/renderer-pixi";
+import { Graphics, Text, type Texture } from "pixi.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 const errorBox = document.querySelector<HTMLPreElement>("#error");
@@ -9,6 +24,9 @@ const loadingBox = document.querySelector<HTMLParagraphElement>("#loading");
 if (canvas === null || errorBox === null || loadingBox === null) {
   throw new Error("hello-world: required DOM elements (#game, #error, #loading) are missing.");
 }
+
+// The development-only DevTools overlay; null in production builds.
+let devtools: DevTools | null = null;
 
 const VIEW_WIDTH = 640;
 const VIEW_HEIGHT = 360;
@@ -98,13 +116,80 @@ try {
   });
   const logoView = createSpriteView({ sprite: logoModel, renderer });
 
+  // R2: the gameplay scene owns a GameObjectCollection. Each spark is a
+  // renderer-agnostic game object: a shared Transform2D (the same instance
+  // drives its Sprite2D model), an update hook, and a destroy hook that
+  // releases exactly what the spark itself created — its sprite view. The
+  // shared texture is never touched by object or collection cleanup.
+  const sparks = new GameObjectCollection();
+  const sparkModels: Sprite2D<Texture>[] = [];
+  const sparkViews: SpriteView<Texture>[] = [];
+  function spawnSpark(angle: number): void {
+    const model = new Sprite2D<Texture>({
+      texture: logo,
+      transform: new Transform2D({
+        x: VIEW_WIDTH / 2,
+        y: VIEW_HEIGHT / 2,
+        scaleX: 0.2,
+        scaleY: 0.2,
+      }),
+    });
+    const view = createSpriteView({ sprite: model, renderer });
+    sparkModels.push(model);
+    sparkViews.push(view);
+    let age = 0;
+    const spark: GameObject = {
+      transform: model.transform,
+      update(deltaTime) {
+        age += deltaTime;
+        const radius = 60 + 20 * Math.sin(age * 2);
+        spark.transform.x = VIEW_WIDTH / 2 + Math.cos(angle + age) * radius;
+        spark.transform.y = VIEW_HEIGHT / 2 + Math.sin(angle + age) * radius;
+        spark.transform.rotation += deltaTime * 4;
+        // The view is a pure projection of the model: sync once per frame
+        // after the model changes, exactly like the logo view.
+        view.sync();
+        if (age > 6) {
+          // Removing during an update is safe: the object is skipped for the
+          // rest of this frame and gone from the next one. The spark releases
+          // its own view; the shared texture stays untouched.
+          view.dispose();
+          const index = sparkModels.indexOf(model);
+          sparkModels.splice(index, 1);
+          sparkViews.splice(index, 1);
+          sparks.remove(spark);
+        }
+      },
+      // Collection destroy calls this exactly once (idempotent with the
+      // expiry path above): the spark releases its own view, never the
+      // shared texture.
+      destroy() {
+        view.dispose();
+      },
+    };
+    sparks.add(spark);
+  }
+  function setSparksVisible(visible: boolean): void {
+    for (let i = 0; i < sparkModels.length; i++) {
+      const model = sparkModels[i];
+      const view = sparkViews[i];
+      if (model === undefined || view === undefined) {
+        continue;
+      }
+      model.visible = visible;
+      view.sync();
+    }
+  }
+
   const menuScene: Scene = {
     init() {},
     enter() {
       renderer.stage.addChild(title, menuHint);
-      // The logo lives in the gameplay scene; hide it through the model.
+      // The logo and sparks live in the gameplay scene; hide them through
+      // their models.
       logoModel.visible = false;
       logoView.sync();
+      setSparksVisible(false);
     },
     update() {
       // Pointer position and button edges come from the framework input state.
@@ -132,8 +217,23 @@ try {
       renderer.stage.addChild(square, playHint);
       logoModel.visible = true;
       logoView.sync();
+      // Spawn the initial sparks once; they respawn automatically as they
+      // expire, and they keep their state across scene re-entries.
+      if (sparks.size === 0) {
+        for (let i = 0; i < 3; i++) {
+          spawnSpark(i * 2.1);
+        }
+      }
+      setSparksVisible(true);
     },
     update(deltaTime) {
+      // R2: registered game objects update through the existing game loop —
+      // no second loop, no extra scheduler.
+      sparks.update(deltaTime);
+      // Expired sparks remove themselves; top up so three are always orbiting.
+      if (sparks.size < 3) {
+        spawnSpark(Math.random() * Math.PI * 2);
+      }
       // Movement reads held keys from the framework input state.
       let moveX = 0;
       let moveY = 0;
@@ -185,6 +285,8 @@ try {
       renderer.stage.removeChild(square, playHint);
       logoModel.visible = false;
       logoView.sync();
+      // Sparks keep their objects alive but stop updating and hide.
+      setSparksVisible(false);
     },
     dispose() {
       // Destroy the scene's display objects; the sprite view removes and
@@ -192,6 +294,9 @@ try {
       square.destroy();
       playHint.destroy();
       logoView.dispose();
+      // The collection's destroy runs each spark's destroy hook, which
+      // disposes exactly its own view; the shared texture survives.
+      sparks.destroy();
     },
   };
 
@@ -208,6 +313,7 @@ try {
     // textures — the renderer owns display objects only, and the manager's
     // policy is non-destructive — so the page unload reclaims them.
     try {
+      devtools?.dispose(); // DevTools only ever detaches itself.
       domInput.dispose();
       scenes.dispose();
     } catch (error: unknown) {
@@ -222,6 +328,21 @@ try {
   domInput.attach();
   scenes.start();
   game.start();
+
+  // Dev-only runtime inspector, opt-in and dynamically imported so production
+  // builds exclude it entirely (import.meta.env.DEV is statically false in a
+  // production build, so the chunk is never even fetched). DevTools is
+  // read-only: it observes the scene manager, the gameplay object collection,
+  // and the input state, and its disposal never touches the runtime.
+  if (import.meta.env.DEV) {
+    try {
+      const { createDevTools } = await import("@g2w/devtools");
+      devtools = createDevTools({ scenes, objects: sparks, input });
+      devtools.open();
+    } catch (error: unknown) {
+      console.error("g2w devtools failed to start:", error);
+    }
+  }
 } catch (error) {
   showError(error);
 }

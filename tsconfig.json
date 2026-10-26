@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/input-dom" },
-    { "path": "packages/renderer-pixi" }
+    { "path": "packages/renderer-pixi" },
+    { "path": "packages/devtools" }
   ]
 }

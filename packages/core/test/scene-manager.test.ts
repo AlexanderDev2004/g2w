@@ -87,6 +87,18 @@ describe("SceneManager lifecycle", () => {
     expect(menu.calls).toEqual(["menu:init", "menu:enter"]);
   });
 
+  it("exposes the registered scene keys as a fresh read-only snapshot", () => {
+    const { manager } = createHarness();
+
+    const keys = manager.keys;
+    expect(keys).toEqual(["menu", "gameplay"]);
+
+    // A fresh copy: mutating it does not affect the manager, and a later read
+    // is unaffected.
+    (keys as string[]).push("bogus");
+    expect(manager.keys).toEqual(["menu", "gameplay"]);
+  });
+
   it("runs init once per scene across repeated activations", () => {
     const { manager, menu, gameplay } = createHarness();
     manager.start();

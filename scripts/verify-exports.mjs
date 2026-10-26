@@ -60,6 +60,9 @@ if (typeof core.Transform2D !== "function") {
 if (typeof core.Sprite2D !== "function") {
   throw new Error("@g2w/core does not export Sprite2D.");
 }
+if (typeof core.GameObjectCollection !== "function") {
+  throw new Error("@g2w/core does not export GameObjectCollection.");
+}
 
 const inputDom = await import(await entryFile("packages/input-dom"));
 if (typeof inputDom.DomInput !== "function") {
@@ -153,6 +156,140 @@ try {
   }
 }
 
+// Exercise the game-object pipeline through the real entry points: a core
+// object registered in a collection, updated once, destroyed — with a fake
+// texture (a destroy() flag) proving no cleanup ever destroys it.
+const objectAssets = renderer.createTextureAssetManager({
+  load: async () => ({
+    destroy() {
+      objectDestroyed = true;
+    },
+  }),
+});
+let objectDestroyed = false;
+const objectTexture = await objectAssets.load("fake/object.png");
+const objectSprite = new core.Sprite2D({ texture: objectTexture });
+const objects = new core.GameObjectCollection();
+const gameObject = {
+  transform: objectSprite.transform,
+  update(deltaTime) {
+    objectSprite.transform.x += 10 * deltaTime;
+  },
+  destroy() {
+    objectSprite.visible = false;
+  },
+};
+objects.add(gameObject);
+objects.update(0.5);
+if (objectSprite.transform.x !== 5) {
+  throw new Error("@g2w/core: GameObjectCollection.update did not drive the object.");
+}
+if ((await objectAssets.load("fake/object.png")) !== objectTexture) {
+  throw new Error("@g2w/renderer-pixi: repeated object-asset loads did not reuse the cache.");
+}
+objects.destroy();
+if (objectSprite.visible !== false) {
+  throw new Error("@g2w/core: GameObjectCollection.destroy did not run the destroy hook.");
+}
+if (objectDestroyed) {
+  throw new Error("@g2w/core: object cleanup destroyed a shared texture (R1 violation).");
+}
+try {
+  objects.update(1);
+  throw new Error("Updating a destroyed GameObjectCollection should throw.");
+} catch (error) {
+  if (!(error instanceof core.SceneError)) {
+    throw new Error("Updating a destroyed GameObjectCollection should throw SceneError.");
+  }
+}
+
+// Exercise the DevTools pipeline through the real entry points, using the
+// same fake DOM approach as the unit tests: build the overlay, feed it a
+// collection snapshot, and dispose it — proving the package's public surface
+// works and that disposal never touches the sources it read from.
+const devtools = await import(await entryFile("packages/devtools"));
+if (typeof devtools.DevTools !== "function" || typeof devtools.createDevTools !== "function") {
+  throw new Error("@g2w/devtools does not export DevTools/createDevTools.");
+}
+const fakeDoc = {
+  body: fakeElement("body"),
+  createElement: (tag) => fakeElement(tag),
+};
+function fakeElement(tag) {
+  return {
+    tag,
+    style: { cssText: "", display: "" },
+    dataset: {},
+    textContent: "",
+    disabled: false,
+    title: "",
+    children: [],
+    parent: null,
+    listeners: new Map(),
+    appendChild(child) {
+      child.parent = this;
+      this.children.push(child);
+      return child;
+    },
+    remove() {
+      if (this.parent) {
+        const index = this.parent.children.indexOf(this);
+        if (index !== -1) {
+          this.parent.children.splice(index, 1);
+        }
+        this.parent = null;
+      }
+    },
+    replaceChildren(...children) {
+      for (const child of this.children) child.parent = null;
+      this.children = [...children];
+      for (const child of children) child.parent = this;
+    },
+    addEventListener(type, listener) {
+      const list = this.listeners.get(type) ?? [];
+      list.push(listener);
+      this.listeners.set(type, list);
+    },
+  };
+}
+function findText(element, fragment) {
+  if (element.textContent.includes(fragment)) {
+    return element;
+  }
+  for (const child of element.children) {
+    const found = findText(child, fragment);
+    if (found) {
+      return found;
+    }
+  }
+  return null;
+}
+const liveCollection = new core.GameObjectCollection();
+liveCollection.add({ transform: new core.Transform2D({ x: 1, y: 2 }) });
+const inspector = devtools.createDevTools({
+  objects: liveCollection,
+  document: /** @type {Document} */ (/** @type {unknown} */ (fakeDoc)),
+  scheduler: {
+    requestFrame: () => 1,
+    cancelFrame: () => {},
+  },
+});
+inspector.open();
+if (fakeDoc.body.children.length !== 1) {
+  throw new Error("@g2w/devtools: open() did not attach the overlay.");
+}
+if (findText(fakeDoc.body, "pos(1.0, 2.0)") === null) {
+  throw new Error("@g2w/devtools: object list did not render the collection snapshot.");
+}
+inspector.dispose();
+if (fakeDoc.body.children.length !== 0 || inspector.disposed !== true) {
+  throw new Error("@g2w/devtools: dispose() did not remove the overlay.");
+}
+// The read source is untouched by DevTools disposal.
+if (liveCollection.size !== 1) {
+  throw new Error("@g2w/devtools: disposal mutated the observed collection.");
+}
+
 const pixi = new renderer.PixiRenderer();
 if (pixi.capabilities.id !== "pixi" || pixi.initialized !== false) {
   throw new Error("@g2w/renderer-pixi: unexpected PixiRenderer state.");
@@ -169,5 +306,5 @@ await pixi.dispose().then(
 );
 
 console.log(
-  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi (incl. asset + sprite API)",
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi, @g2w/devtools (incl. asset + sprite + game-object + devtools API)",
 );

@@ -41,6 +41,7 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **DevTools MVP — read-only runtime overlay** `Done` `P2`: `@g2w/devtools` — an opt-in, dev-only DOM overlay observing scenes (via a new `SceneManager.keys` accessor), game objects and transforms (via a new `GameObjectCollection.objects()` snapshot accessor), explicitly watched input keys/buttons, FPS/frame time, and a bounded runtime log; snapshot-polling only, never mutating or disposing the runtime, and excluded from production builds.
 
 - **E3 — Adapter lifecycle hardening** `Done` `P0`: E3-A audit (#6), E3-B PixiRenderer lifecycle (#7, PR #9), and E3-C DOM/Gamepad attachment lifecycle (#8, PR #10). Initialization/attachment rollback, concurrent/repeated lifecycle calls, terminal disposal, listener cleanup, and shared-texture ownership are covered by regression tests. Adapters stay imperative and depend on core only; Effect ownership remains at the higher-level runtime boundary.
+- **E4 — Effect as the primary application runtime** `Done` `P1`: the hello-world demo boots through the Effect-native `G2WGame` (`@g2w/runtime`) instead of wiring `Game`/`SceneManager`/renderer/input/assets/audio by hand. Scenes, assets, and audio are registered as caller finalizers released LIFO (assets → audio → scenes → renderer); `pagehide` disposes adapters then the game once, idempotently. Core `Game` remains the reference implementation and `@g2w/core` stays Effect-free; no Effect work enters the frame hot path and adapters remain imperative (E3 boundary intact). Evidence: 4 new deterministic runtime tests (finalizer release order, failure observability via `RuntimeShutdownError.failures`, finalizers surviving failed-init retry, exactly-once disposal-before-init) — full suite 385 tests; bundle 706,420 B (+82,510 B, Effect now a demo dependency by design); headless-browser smoke via CDP: 13/13 checks, zero console/page errors, pixel-verified menu ⇄ gameplay transitions, and double-pagehide disposal without duplicate cleanup or uncaught errors.
 
 ## Near-term (current focus)
 
@@ -153,7 +154,7 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **Dependencies:** only after R1–R3 land and the core contracts are stable; the contract may need an extension point for 3D transforms.
 - **Acceptance criteria (gate for starting):** core contracts frozen for one release cycle with no breaking change needed for 2D.
 
-### R9 — Integrations (React, Vue, Effect)
+### R9 — Integrations (React, Vue)
 
 **Status:** Exploratory · **Priority:** P3
 - **Objective:** thin bindings embedding g2w in common stacks.

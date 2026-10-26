@@ -15,6 +15,7 @@
     "@g2w/devtools": "workspace:*",
     "@g2w/input-dom": "workspace:*",
     "@g2w/input-gamepad": "workspace:*",
+    "@g2w/runtime": "workspace:*",
     "@g2w/renderer-pixi": "workspace:*",
     "pixi.js": "8.22.0"
   },

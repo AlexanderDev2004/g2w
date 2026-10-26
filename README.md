@@ -2,7 +2,7 @@
 
 **g2w — Game to Website** is a TypeScript-first, AI-agent-ready framework for building and shipping web games: HTML5 games, 2D first with 3D planned, for desktop and mobile web browsers.
 
-> **Status: MVP R5 + E3 (Effect runtime and adapter lifecycle hardening) — gamepad & touch input.** The repository provides a `Game` runtime (lifecycle + frame loop), a renderer-agnostic `SceneManager`, a DOM-free `InputState` with a browser adapter plus a DOM-free `GamepadState` with a Gamepad API adapter (`@g2w/input-gamepad`), a minimal asset system (`AssetManager` in core plus a PixiJS texture loader in the renderer adapter), a renderer-agnostic 2D sprite model (`Transform2D`/`Sprite2D` in core with normalized anchors and z-order, projected onto PixiJS by the adapter), a minimal game-object layer (`GameObject`/`GameObjectCollection` in core), and a small ownership-explicit audio system (`AudioManager` in core plus a Web Audio backend in `@g2w/audio-web`) on top of the MVP 0 foundation: monorepo, renderer contract, PixiJS adapter, a working browser demo, and the Effect-based `@g2w/runtime` foundation (E1 bootstrap plus the E2 Effect-native game lifecycle in `@g2w/runtime`; core `Game` is unchanged). See [What is implemented](#what-is-implemented) below.
+> **Status: MVP R5 + E3 + E4 (Effect is the primary application runtime) — gamepad & touch input.** The repository provides a `Game` runtime (lifecycle + frame loop), the Effect-native `G2WGame` application runtime that the browser demo boots through, a renderer-agnostic `SceneManager`, a DOM-free `InputState` with a browser adapter plus a DOM-free `GamepadState` with a Gamepad API adapter (`@g2w/input-gamepad`), a minimal asset system (`AssetManager` in core plus a PixiJS texture loader in the renderer adapter), a renderer-agnostic 2D sprite model (`Transform2D`/`Sprite2D` in core with normalized anchors and z-order, projected onto PixiJS by the adapter), a minimal game-object layer (`GameObject`/`GameObjectCollection` in core), and a small ownership-explicit audio system (`AudioManager` in core plus a Web Audio backend in `@g2w/audio-web`) on top of the MVP 0 foundation: monorepo, renderer contract, PixiJS adapter, a working browser demo, and the Effect-based `@g2w/runtime` foundation (E1 bootstrap plus the E2 Effect-native game lifecycle in `@g2w/runtime`; core `Game` is unchanged). See [What is implemented](#what-is-implemented) below.
 
 ## Architecture
 
@@ -16,7 +16,7 @@ packages/audio-web/src/           Web Audio (browser) backend: decodes sound fil
 packages/renderer-pixi/src/       PixiJS implementation of the renderer contract + texture asset loader
 packages/devtools/src/            Read-only dev overlay: scenes, objects, transforms, FPS, input, logs
 packages/runtime/src/             Effect-based runtime/bootstrap foundation (managed runtime, explicit shutdown) + Effect-native game lifecycle (G2WGame)
-examples/hello-world/             Vite browser demo: Game + SceneManager + input + PixiRenderer
+examples/hello-world/             Vite browser demo: G2WGame (Effect runtime) + SceneManager + input + PixiRenderer
 docs/architecture.md              Architecture decisions and direction
 ```
 
@@ -89,14 +89,14 @@ flowchart TB
 
 ### Current vs. planned capabilities
 
-| Capability                                | Status                                                                                                      |
-| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| Effect as the primary application runtime | Done for the game lifecycle (`G2WGame`); core `Game` still ships alongside it and the demo uses core `Game` |
-| 2D rendering                              | Done — PixiJS 8 over WebGL                                                                                  |
-| Canvas (non-WebGL) rendering              | Unverified target                                                                                           |
-| 3D rendering                              | Exploratory — Three.js adapter (R8)                                                                         |
-| Touch input                               | Done — multi-touch through the Pointer Events stream                                                        |
-| Desktop and mobile web browsers           | Target platform; verified today on desktop browsers via the demo's smoke runs                               |
+| Capability                                | Status                                                                                                        |
+| ----------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| Effect as the primary application runtime | Done — the demo boots through `G2WGame`; core `Game` still ships alongside it as the reference implementation |
+| 2D rendering                              | Done — PixiJS 8 over WebGL                                                                                    |
+| Canvas (non-WebGL) rendering              | Unverified target                                                                                             |
+| 3D rendering                              | Exploratory — Three.js adapter (R8)                                                                           |
+| Touch input                               | Done — multi-touch through the Pointer Events stream                                                          |
+| Desktop and mobile web browsers           | Target platform; verified today on desktop browsers via the demo's smoke runs                                 |
 
 ## Prerequisites
 
@@ -129,7 +129,7 @@ pnpm install
 - **Game runtime** — `Game` owns a renderer and a `requestAnimationFrame` frame loop with explicit lifecycle states (`new` → `initializing` → `initialized` → `running` ⇄ `stopped` → `disposed`), a seconds-based `deltaTime` update callback, and deterministic handling of concurrent init, stop-during-init, and disposal races. See [docs/architecture.md](docs/architecture.md) for the state model.
 - **Scene system** — `SceneManager` owns a fixed set of named, reusable `Scene` objects: `init` runs once per instance, `enter`/`exit` pair on every activation, and only the active scene is updated. Transitions exit the previous scene before entering the next one, are immediate outside scene hooks, and deferred when requested from inside one — the most recent request always wins. Disposal is terminal, best-effort, and releases every initialized scene. See [docs/architecture.md](docs/architecture.md) for the full lifecycle and transition semantics.
 - **PixiJS adapter** — `@g2w/renderer-pixi` implements the contract with PixiJS 8's async `Application` lifecycle and renders on demand (`render()`, `stage` access). It is a minimal adapter, not a complete renderer yet.
-- **Browser demo** — `examples/hello-world` is a real Vite app: the `Game` loop updates the active scene, two scenes (menu and gameplay) demonstrate real transitions, and the gameplay square is moved with WASD/arrow keys, a gamepad (left stick or d-pad), or touch drag through the input API. Run it with `pnpm dev`.
+- **Browser demo** — `examples/hello-world` is a real Vite app: the `G2WGame` (Effect runtime) loop updates the active scene, two scenes (menu and gameplay) demonstrate real transitions, and the gameplay square is moved with WASD/arrow keys, a gamepad (left stick or d-pad), or touch drag through the input API. Run it with `pnpm dev`.
 - **Input system** — `@g2w/core` provides the DOM-free `InputState` (keyboard held/pressed/released, pointer position, button state, multi-touch contacts, focus-loss and pointer-leave policies) and the DOM-free `GamepadState` (per-controller buttons with per-frame edges, raw analog axes, explicit connect/disconnect policy). `@g2w/input-dom` adapts real browser events onto `InputState` — touch contacts ride the same Pointer Events stream, and `pointercancel` releases stuck state — while `@g2w/input-gamepad` samples controllers through an injectable polling source driven by the host each frame. Edge states reset at one explicit boundary (`endFrame()`) per game frame. See [docs/architecture.md](docs/architecture.md) for the frame semantics.
 - **Asset system** — `@g2w/core` provides a generic, dependency-free `AssetManager`: asynchronous loading through a caller-supplied loader, caching, deduplication of concurrent requests, retryable failures, and explicit resource ownership (a supplied `disposeAsset` makes the manager own its values; without one, values stay caller-owned). `@g2w/renderer-pixi` adds `createTextureAssetManager()`, which loads PixiJS textures by URL and is deliberately non-destructive: textures from PixiJS's shared `Assets` cache are never destroyed by manager disposal, because PixiJS offers no way to prove no other code still uses them. See [docs/architecture.md](docs/architecture.md) for the ownership rules and the memory trade-off.
 - **2D sprite model** — `@g2w/core` provides `Transform2D` (mutable `x`/`y`, `rotation` in radians, `scaleX`/`scaleY`; defaults `0, 0, 0, 1, 1`) and `Sprite2D<TTexture>` (typed texture handle, transform, `visible`, `alpha`) — plain mutable data with no renderer coupling. `@g2w/renderer-pixi` adds `createSpriteView({ sprite, renderer })`, which attaches a PixiJS sprite to the stage; game code mutates the model and calls `view.sync()` once per frame (the existing game loop is the only driver), and `view.dispose()` removes and destroys the display object without ever destroying the shared texture. See [docs/architecture.md](docs/architecture.md) for the ownership rules.
@@ -139,7 +139,7 @@ pnpm install
 - **Audio (R4)** — `@g2w/core` provides a small, ownership-explicit `AudioManager` following the asset-manager pattern: an injected browser-free `AudioBackend` loads sounds (cached, deduplicated, retryable failures), `play(key, options?)` starts a tracked playback with `volume`/`loop` and returns an idempotent `SoundPlayback` handle, `stopAll()` and terminal `dispose()` stop everything, and the manager **never destroys sounds** — decoded audio stays caller/backend-owned so it can be shared freely. `@g2w/audio-web` implements the backend on the Web Audio API: injectable `AudioContext`/`fetch`, `resume()` for the browser autoplay policy (`play()` on a suspended context throws instead of starting silently inaudible playback), and `dispose()` that closes the context. No second loop, no hidden timers. See [docs/architecture.md](docs/architecture.md).
 - **DevTools (read-only overlay)** — `@g2w/devtools` provides an opt-in, dev-only DOM overlay that observes a running game without touching it: the scene list (via `SceneManager.keys`), registered game objects and their transforms (via `GameObjectCollection.objects()`), explicitly watched input keys/buttons, FPS/frame time, and a bounded runtime log buffer. It polls immutable snapshots at a fixed refresh rate — it never mutates the runtime, never disposes it, and is excluded from production builds (the demo loads it only behind `import.meta.env.DEV`). A disabled "3D — Coming Soon" placeholder marks the planned 3D inspector. See [docs/architecture.md](docs/architecture.md).
 - **Effect runtime foundation (E1)** — `@g2w/runtime` bootstraps one managed Effect runtime from an optional application layer: eager layer build (bootstrap failures report as `RuntimeBootstrapError` with the original cause, after partial-build resources are released), a small facade (`run`, `addFinalizer`, `shutdown`), explicit idempotent shutdown, and best-effort cleanup that attempts every finalizer and keeps each failure observable (`RuntimeShutdownError.failures`). See [docs/architecture.md](docs/architecture.md).
-- **Effect-native game lifecycle (E2)** — `@g2w/runtime` also exports `G2WGame`, the same state machine, frame-loop semantics, and race behavior as core `Game`, orchestrated through the managed Effect runtime: renderer initialization runs as a single lifecycle effect (original error causes preserved; a failed init returns to `"new"` and is retryable), resource ownership is expressed as runtime finalizers (LIFO release: caller finalizers, then owned scenes, then the renderer), and disposal is idempotent with every cleanup failure observable. The frame loop stays synchronous on exactly one injected scheduler — no Effect runtime, effect, or promise is allocated per frame. Core `Game` is unchanged; the demo still uses it, so the browser bundle is unaffected. See [docs/architecture.md](docs/architecture.md).
+- **Effect-native game lifecycle (E2 + E4)** — `@g2w/runtime` also exports `G2WGame`, the same state machine, frame-loop semantics, and race behavior as core `Game`, orchestrated through the managed Effect runtime: renderer initialization runs as a single lifecycle effect (original error causes preserved; a failed init returns to `"new"` and is retryable), resource ownership is expressed as runtime finalizers (LIFO release: caller finalizers, then owned scenes, then the renderer), and disposal is idempotent with every cleanup failure observable. The frame loop stays synchronous on exactly one injected scheduler — no Effect runtime, effect, or promise is allocated per frame. Since E4, the hello-world demo boots through `G2WGame` and registers its scene manager, audio stack, and asset manager as caller finalizers, making Effect the primary application runtime; core `Game` is unchanged and still ships as the reference implementation. The demo bundle now includes Effect. See [docs/architecture.md](docs/architecture.md).
 - **Renderer sizing (R3)** — logical resolution is part of the renderer contract: `width`/`height` on `Game`/`RendererInitOptions` set the stage coordinate space game code uses (both or neither, validated), the drawing buffer is `logical × resolution`, and display size stays application-owned CSS. `Renderer.resize(width, height)` changes the logical space at runtime without ever touching textures. `@g2w/input-dom`'s `logicalSize` option maps pointer coordinates into the game's logical space, so input stays correct under CSS display scaling. The default policy — fixed logical resolution with proportional display scaling — is documented in [docs/architecture.md](docs/architecture.md).
 
 For implementation details, read [ARCHITECTURE.md](ARCHITECTURE.md); for current priorities and planned work, read [ROADMAP.md](ROADMAP.md).
@@ -176,8 +176,6 @@ Note on the screenshots: they were captured from a real headed-Chrome session vi
 
 ```ts
 import {
-  AssetManager,
-  Game,
   type GameObject,
   GameObjectCollection,
   InputState,
@@ -188,6 +186,7 @@ import {
 } from "@g2w/core";
 import { DomInput } from "@g2w/input-dom";
 import { createSpriteView, createTextureAssetManager, PixiRenderer } from "@g2w/renderer-pixi";
+import { G2WGame } from "@g2w/runtime";
 
 const renderer = new PixiRenderer();
 const input = new InputState();
@@ -233,8 +232,10 @@ objects.add({
 });
 // Call objects.update(deltaTime) inside the gameplay scene's update.
 
-const scenes = new SceneManager({ scenes: { menu, gameplay }, initial: "menu" });
-const game = new Game({
+// G2WGame is the Effect-native application entry point: it owns the managed
+// Effect runtime, the renderer lifecycle, and — through finalizers — every
+// resource the app registers on it.
+const game = new G2WGame({
   renderer,
   canvas: document.querySelector<HTMLCanvasElement>("#game")!,
   width: 640, // logical resolution: the stage space game code uses
@@ -244,17 +245,23 @@ const game = new Game({
     input.endFrame(); // one boundary per frame, after every consumer
   },
 });
+const scenes = new SceneManager({ scenes: { menu, gameplay }, initial: "menu" });
 
 await game.init();
+// Register app resources as finalizers: LIFO disposal releases them before
+// the renderer, and every cleanup failure stays observable.
+game.addFinalizer(() => scenes.dispose());
+game.addFinalizer(() => assets.dispose());
+
 domInput.attach();
 scenes.start();
 game.start();
 ```
 
-Ownership: the caller owns the input state, the browser adapter, the asset manager, the scenes, and the game — and the sprite models, views, and game-object collections it creates. On teardown, dispose the adapter first (so no further events reach the state), then the scenes (they destroy their display objects and sprite views, never their textures), then the game, then the asset manager — the demo does exactly that on `pagehide`. Scenes receive the manager, sprite models, and every other capability through plain composition, not a context object. Texture assets are never destroyed by manager or view disposal (see the architecture notes); they live in PixiJS's shared cache until the page unloads.
+Ownership: the caller owns the input state and the browser adapter; the game owns the renderer for its lifetime, and every resource registered with `addFinalizer` (the scene manager, the asset manager above). On teardown, dispose the adapter first (so no further events reach the state), then call `game.dispose()` once — it releases the registered finalizers and the renderer in LIFO order, attempting every cleanup even if one fails. The demo does exactly that on `pagehide`. Scenes receive the manager, sprite models, and every other capability through plain composition, not a context object. Texture assets are never destroyed by manager or view disposal (see the architecture notes); they live in PixiJS's shared cache until the page unloads.
 
 ## What is planned (not implemented yet)
 
-See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Recently completed: renderer sizing (R3), sprite anchors and z-ordering (R11), audio (R4), gamepad/touch input (R5), the Effect-native game lifecycle (E2), and E3 renderer/input adapter lifecycle hardening. E3 keeps adapters imperative and failure-safe; Effect remains at the higher-level runtime ownership boundary. Exploratory: a starter template and CLI, a Three.js adapter, integrations (React, Vue, Effect), and npm publishing.
+See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Recently completed: renderer sizing (R3), sprite anchors and z-ordering (R11), audio (R4), gamepad/touch input (R5), the Effect-native game lifecycle (E2), E3 renderer/input adapter lifecycle hardening, and E4 — the demo now boots through `G2WGame`, making Effect the primary application runtime. E3 keeps adapters imperative and failure-safe; Effect remains at the higher-level runtime ownership boundary. Exploratory: a starter template and CLI, a Three.js adapter, integrations (React, Vue), and npm publishing.
 
 Packages are not published to npm yet; the workspace is for local development and CI.

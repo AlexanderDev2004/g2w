@@ -577,3 +577,114 @@ describe("G2WGame scene ownership", () => {
     await game.dispose();
   });
 });
+
+/**
+ * E4 application-runtime integration: the hello-world demo pattern, where
+ * the app registers its own resources (scene manager, audio, assets) as
+ * caller finalizers on the game instead of disposing them manually.
+ */
+describe("G2WGame application finalizers (E4 demo pattern)", () => {
+  it("releases caller resources LIFO around the owned renderer", async () => {
+    const renderer = fakeRenderer();
+    const releaseOrder: string[] = [];
+    renderer.dispose = async () => {
+      renderer.disposeCount++;
+      releaseOrder.push("renderer");
+      renderer.initialized = false;
+    };
+    const game = new G2WGame({ renderer, canvas });
+    await game.init();
+    // The demo registers its resources in acquisition order: scenes first,
+    // then audio, then assets. LIFO shutdown must release them in exactly
+    // the reverse of that registration order.
+    game.addFinalizer(() => {
+      releaseOrder.push("scenes");
+    });
+    game.addFinalizer(() => {
+      releaseOrder.push("audio");
+    });
+    game.addFinalizer(() => {
+      releaseOrder.push("assets");
+    });
+
+    await game.dispose();
+
+    expect(releaseOrder).toEqual(["assets", "audio", "scenes", "renderer"]);
+    expect(renderer.disposeCount).toBe(1);
+  });
+
+  it("attempts every caller finalizer even when one fails, keeping each failure observable", async () => {
+    const renderer = fakeRenderer();
+    const boom = new Error("audio dispose boom");
+    const attempted: string[] = [];
+    const game = new G2WGame({ renderer, canvas });
+    await game.init();
+    game.addFinalizer(() => {
+      attempted.push("scenes");
+    });
+    game.addFinalizer(() => {
+      attempted.push("audio");
+      throw boom;
+    });
+    game.addFinalizer(() => {
+      attempted.push("assets");
+    });
+
+    const shutdown = await game.dispose().then(
+      () => null,
+      (error) => error,
+    );
+
+    // Every finalizer ran despite the middle one failing...
+    expect(attempted).toEqual(["assets", "audio", "scenes"]);
+    // ...and the failure stayed observable through RuntimeShutdownError.
+    expect(shutdown).toBeInstanceOf(RuntimeShutdownError);
+    const failures = (shutdown as RuntimeShutdownError).failures;
+    expect(failures).toHaveLength(1);
+    expect(failures[0]?.cause).toBe(boom);
+  });
+
+  it("keeps buffered caller finalizers pending and runs them on disposal after a failed init", async () => {
+    const renderer = fakeRenderer();
+    renderer.initError = new Error("init boom");
+    const game = new G2WGame({ renderer, canvas });
+    const released: string[] = [];
+    game.addFinalizer(() => {
+      released.push("audio");
+    });
+
+    await expect(game.init()).rejects.toThrow("init boom");
+    expect(game.state).toBe("new");
+    // Buffered finalizers stay pending while the game is retryable...
+    expect(released).toEqual([]);
+
+    // ...and a retry succeeds, keeping the registration.
+    renderer.initError = null;
+    await game.init();
+    expect(game.state).toBe("initialized");
+
+    await game.dispose();
+    expect(released).toEqual(["audio"]);
+    expect(renderer.disposeCount).toBe(1);
+  });
+
+  it("runs buffered caller finalizers exactly once when disposal happens before a successful init", async () => {
+    const renderer = fakeRenderer();
+    const game = new G2WGame({ renderer, canvas });
+    let released = 0;
+    game.addFinalizer(() => {
+      released++;
+    });
+
+    await game.dispose();
+    expect(released).toBe(1);
+    // The renderer was never initialized and its ownership finalizer was
+    // never registered, so disposal must not touch it.
+    expect(renderer.initCount).toBe(0);
+    expect(renderer.disposeCount).toBe(0);
+
+    // Terminal: a repeated dispose does not run cleanup again.
+    await game.dispose();
+    expect(released).toBe(1);
+  });
+});

@@ -241,6 +241,9 @@ importers:
       '@g2w/renderer-pixi':
         specifier: workspace:*
         version: link:../../packages/renderer-pixi
+      '@g2w/runtime':
+        specifier: workspace:*
+        version: link:../../packages/runtime
       pixi.js:
         specifier: 8.22.0
         version: 8.22.0

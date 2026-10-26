@@ -1,7 +1,6 @@
 import { WebAudioBackend } from "@g2w/audio-web";
 import {
   AudioManager,
-  Game,
   type GameObject,
   GameObjectCollection,
   GamepadState,
@@ -20,6 +19,7 @@ import {
   PixiRenderer,
   type SpriteView,
 } from "@g2w/renderer-pixi";
+import { G2WGame } from "@g2w/runtime";
 import { Graphics, Text, type Texture } from "pixi.js";
 
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
@@ -120,7 +120,13 @@ try {
 
   // The renderer must be initialized before any view can attach to its
   // stage: createSpriteView reads renderer.stage, which throws before init.
-  const game = new Game({
+  // The application entry point is the Effect-native G2WGame (E4): it owns
+  // the managed Effect runtime and the renderer lifecycle; the scene
+  // manager, the audio stack, and the asset manager join its disposal chain
+  // as finalizers (see below). The frame path is unchanged — one
+  // synchronous loop on the default injected scheduler, no Effect or
+  // promise allocated per frame.
+  const game = new G2WGame({
     renderer,
     canvas,
     backgroundColor: "#1099bb",
@@ -398,32 +404,41 @@ try {
     },
   };
 
+  // The game owns the scenes through G2WGame: the manager's disposal is
+  // registered as a caller finalizer, matching the ownership chain the
+  // `scenes`/`ownScenes` options express. Scene transitions stay
+  // synchronous in core; the game only owns the disposal.
   const scenes = new SceneManager({
     scenes: { menu: menuScene, gameplay: gameplayScene },
     initial: "menu",
   });
+  game.addFinalizer(() => scenes.dispose());
+
+  // G2WGame owns the game lifecycle: the scene manager's disposal was
+  // registered above right after its construction, and the audio stack and
+  // the asset manager are registered as caller finalizers here, after a
+  // successful init. Shutdown is LIFO, so cleanup releases assets → audio
+  // → scenes → renderer, matching the old manual teardown order exactly —
+  // with every finalizer attempted even if one fails.
+  game.addFinalizer(() => audio.dispose());
+  game.addFinalizer(() => assets.dispose());
 
   window.addEventListener("pagehide", () => {
-    // Adapter first (no further events reach the state), then scenes (they
-    // destroy their sprites and remove their children from the stage), then
-    // audio (stops playback and closes the AudioContext), then the game
-    // (releases the renderer), and finally the asset manager (it releases
-    // its cache). Neither the audio stack nor the managers nor the renderer
-    // ever destroys textures — the renderer owns display objects only, and
-    // the asset policy is non-destructive — so the page unload reclaims them.
+    // Adapters first (no further events reach the states), then the game:
+    // G2WGame.dispose() releases the caller finalizers (assets, audio), the
+    // scene manager (which destroys sprites and removes children from the
+    // stage), and finally the renderer. Neither the audio stack nor the
+    // managers nor the renderer ever destroys textures — the renderer owns
+    // display objects only, and the asset policy is non-destructive — so
+    // the page unload reclaims them.
     try {
       devtools?.dispose(); // DevTools only ever detaches itself.
       domInput.dispose();
       gamepadInput.dispose(); // stops gamepad observation before the state goes
-      scenes.dispose();
-      audio.dispose();
     } catch (error: unknown) {
       console.error(error);
     }
-    void game
-      .dispose()
-      .then(() => assets.dispose())
-      .catch((error: unknown) => console.error(error));
+    void game.dispose().catch((error: unknown) => console.error(error));
   });
 
   domInput.attach();

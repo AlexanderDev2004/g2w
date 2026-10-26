@@ -194,13 +194,20 @@ export class G2WGame {
    * Initialize the renderer through the managed Effect runtime. Concurrent
    * calls return the same in-flight promise. On failure the game returns to
    * the `"new"` state and the original error is rethrown; initialization
-   * may then be retried.
+   * may then be retried. Rejected with {@link GameError} once disposal has
+   * started — including the gap where a failed in-flight initialization has
+   * already reset the state but disposal has not completed yet.
    */
   init(): Promise<void> {
     if (this.#state === "initializing" && this.#initPromise !== null) {
       return this.#initPromise;
     }
-    if (this.#state === "disposed") {
+    // Disposal is terminal from the moment it starts, not only once it
+    // completes: a failed initialization resets the state to "new" while
+    // dispose() is still waiting for it, and a retry in that gap could
+    // race the runtime shutdown and leave an initialized renderer with no
+    // registered cleanup.
+    if (this.#state === "disposed" || this.#disposePromise !== null) {
       return Promise.reject(new GameError("Cannot init a disposed game."));
     }
     if (this.#state !== "new") {

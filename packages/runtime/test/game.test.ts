@@ -78,8 +78,9 @@ const canvas = { tag: "fake-canvas" } as unknown as HTMLCanvasElement;
  * `release()` is safe to call before `initialize()` even starts: the game's
  * lifecycle hop through the managed runtime defers the renderer call to a
  * later microtask, so release-then-start and start-then-release both work.
+ * Pass `releaseError` to make the released initialization reject.
  */
-function gateInitialize(renderer: FakeRenderer): () => void {
+function gateInitialize(renderer: FakeRenderer, releaseError: Error | null = null): () => void {
   let released = false;
   let resolvePending: (() => void) | null = null;
   renderer.initialize = async () => {
@@ -88,6 +89,9 @@ function gateInitialize(renderer: FakeRenderer): () => void {
       await new Promise<void>((resolve) => {
         resolvePending = resolve;
       });
+    }
+    if (releaseError !== null) {
+      throw releaseError;
     }
     renderer.initialized = true;
   };
@@ -291,6 +295,44 @@ describe("G2WGame stop/dispose races", () => {
     // The renderer was initialized (init won the race) and released once.
     expect(renderer.initCount).toBe(1);
     expect(renderer.disposeCount).toBe(1);
+  });
+
+  it("rejects init() retry once disposal has started, even after a failed init", async () => {
+    const renderer = fakeRenderer();
+    const boom = new Error("init boom during dispose");
+    const releaseInit = gateInitialize(renderer, boom);
+    const game = new G2WGame({ renderer, canvas });
+
+    const pending = game.init();
+    const disposing = game.dispose();
+    releaseInit();
+    // Retry from inside a rejection handler of the failed init: at that
+    // moment the failure has reset the state to "new" while disposal is
+    // still completing, so this is exactly the gap a retry could exploit.
+    // Without the disposal guard the retry proceeds, completes after the
+    // runtime shut down, initializes a renderer no finalizer would ever
+    // release, and resurrects the disposed game's state.
+    let retry: Promise<{ ok: boolean; error?: unknown }> | undefined;
+    const settled = await settle(
+      pending.catch((error) => {
+        retry = settle(game.init());
+        throw error;
+      }),
+    );
+    expect(settled.ok).toBe(false);
+    if (retry === undefined) {
+      throw new Error("the rejection handler never attempted a retry");
+    }
+
+    const retrySettled = await retry;
+    expect(retrySettled.ok).toBe(false);
+    expect(retrySettled.ok === false ? retrySettled.error : undefined).toBeInstanceOf(GameError);
+
+    await disposing;
+    expect(game.state).toBe("disposed");
+    // The retry never reached the renderer, and nothing owned was released.
+    expect(renderer.initCount).toBe(1);
+    expect(renderer.disposeCount).toBe(0);
   });
 
   it("is a safe no-op to dispose before initialization", async () => {

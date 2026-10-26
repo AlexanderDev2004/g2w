@@ -273,6 +273,43 @@ try {
   }
 }
 
+// Exercise the gamepad pipeline through the real entry points: a core
+// GamepadState over an injected fake source (no hardware, no browser),
+// sampling once, and terminal idempotent disposal.
+const inputGamepad = await import(await entryFile("packages/input-gamepad"));
+if (
+  typeof inputGamepad.GamepadInput !== "function" ||
+  typeof inputGamepad.GamepadInputError !== "function"
+) {
+  throw new Error("@g2w/input-gamepad does not export GamepadInput/GamepadInputError.");
+}
+const gamepadState = new core.GamepadState();
+const gamepadInput = new inputGamepad.GamepadInput(gamepadState, {
+  source: () => [{ index: 0, pressed: [true], axes: [0.25, -0.5] }, null],
+  connectTarget: new EventTarget(),
+  disconnectTarget: new EventTarget(),
+});
+gamepadInput.attach();
+gamepadInput.poll();
+if (
+  !gamepadState.isConnected(0) ||
+  !gamepadState.isButtonDown(0, 0) ||
+  gamepadState.getAxis(0, 1) !== -0.5
+) {
+  throw new Error("@g2w/input-gamepad: poll() did not feed the sampled controller.");
+}
+gamepadState.endFrame();
+gamepadInput.dispose();
+gamepadInput.dispose(); // idempotent
+try {
+  gamepadInput.attach();
+  throw new Error("Attaching a disposed GamepadInput should throw.");
+} catch (error) {
+  if (!(error instanceof inputGamepad.GamepadInputError)) {
+    throw new Error("Attaching a disposed GamepadInput should throw GamepadInputError.");
+  }
+}
+
 // Exercise the DevTools pipeline through the real entry points, using the
 // same fake DOM approach as the unit tests: build the overlay, feed it a
 // collection snapshot, and dispose it â€” proving the package's public surface
@@ -379,5 +416,5 @@ await pixi.dispose().then(
 );
 
 console.log(
-  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/renderer-pixi, @g2w/audio-web, @g2w/devtools (incl. asset + sprite + game-object + audio + devtools API)",
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/input-gamepad, @g2w/renderer-pixi, @g2w/audio-web, @g2w/devtools (incl. asset + sprite + game-object + audio + gamepad + devtools API)",
 );

@@ -1,0 +1,27 @@
+{
+  "name": "@g2w/input-gamepad",
+  "version": "0.1.0",
+  "description": "Gamepad (Gamepad API) adapter feeding sampled controller state into the @g2w/core GamepadState.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@g2w/core": "workspace:*"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

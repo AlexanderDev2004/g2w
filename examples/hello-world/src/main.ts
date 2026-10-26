@@ -4,6 +4,7 @@ import {
   Game,
   type GameObject,
   GameObjectCollection,
+  GamepadState,
   InputState,
   type Scene,
   SceneManager,
@@ -12,6 +13,7 @@ import {
 } from "@g2w/core";
 import type { DevTools } from "@g2w/devtools";
 import { DomInput } from "@g2w/input-dom";
+import { GamepadInput } from "@g2w/input-gamepad";
 import {
   createSpriteView,
   createTextureAssetManager,
@@ -58,6 +60,13 @@ try {
     // stage coordinates), not the canvas's backing resolution.
     logicalSize: { width: VIEW_WIDTH, height: VIEW_HEIGHT },
   });
+
+  // The gamepad path (R5): a DOM-free GamepadState from @g2w/core, sampled
+  // by the browser adapter from @g2w/input-gamepad. Sampling is explicit —
+  // poll() runs once per game frame in the loop below, right before the
+  // scenes read the state. No second loop, no hidden timers.
+  const gamepadState = new GamepadState();
+  const gamepadInput = new GamepadInput(gamepadState);
 
   // The asset path: the app creates and owns one texture asset manager. All
   // game logic loads through this public API — no direct PixiJS Assets calls.
@@ -123,10 +132,13 @@ try {
     height: VIEW_HEIGHT,
     resolution: window.devicePixelRatio || 1,
     // No second loop: the active scene is updated by the existing game loop,
-    // and the input frame boundary sits right after every consumer.
+    // and the input frame boundary sits right after every consumer. The
+    // gamepad poll runs first so this frame's samples are what scenes read.
     onUpdate: (deltaTime) => {
+      gamepadInput.poll();
       scenes.update(deltaTime);
       input.endFrame();
+      gamepadState.endFrame();
     },
   });
   await game.init();
@@ -276,7 +288,10 @@ try {
       if (sparks.size < 3) {
         spawnSpark(Math.random() * Math.PI * 2);
       }
-      // Movement reads held keys from the framework input state.
+      // Movement reads held keys from the framework input state, plus the
+      // left stick (axes 0/1) and d-pad (buttons 12–15) from the gamepad
+      // state. The dead zone is this demo's choice, applied here — the
+      // adapter delivers raw axis values.
       let moveX = 0;
       let moveY = 0;
       if (input.isKeyDown("KeyA") || input.isKeyDown("ArrowLeft")) {
@@ -291,6 +306,47 @@ try {
       if (input.isKeyDown("KeyS") || input.isKeyDown("ArrowDown")) {
         moveY += 1;
       }
+      let controllerStatus = "no controller";
+      if (gamepadState.isConnected(0)) {
+        const [axisX, axisY] = [gamepadState.getAxis(0, 0), gamepadState.getAxis(0, 1)];
+        if (Math.abs(axisX) > 0.2) {
+          moveX += axisX;
+        }
+        if (Math.abs(axisY) > 0.2) {
+          moveY += axisY;
+        }
+        if (gamepadState.isButtonDown(0, 14)) {
+          moveX -= 1; // d-pad left
+        }
+        if (gamepadState.isButtonDown(0, 15)) {
+          moveX += 1; // d-pad right
+        }
+        if (gamepadState.isButtonDown(0, 12)) {
+          moveY -= 1; // d-pad up
+        }
+        if (gamepadState.isButtonDown(0, 13)) {
+          moveY += 1; // d-pad down
+        }
+        controllerStatus = "controller 0 connected";
+      }
+      // Touch (R5): dragging on the canvas steers the square toward the
+      // first active contact. Keyboard and mouse behavior is unchanged.
+      const dragId = input.activeTouchIds()[0];
+      if (dragId !== undefined) {
+        const touch = input.getTouchPosition(dragId);
+        if (touch !== undefined) {
+          const dx = touch.x - (squareX + SQUARE_SIZE / 2);
+          const dy = touch.y - (squareY + SQUARE_SIZE / 2);
+          const distance = Math.hypot(dx, dy);
+          if (distance > 4) {
+            const dragSpeed = Math.min(distance, SPEED * 1.5);
+            moveX += (dx / distance) * (dragSpeed / SPEED);
+            moveY += (dy / distance) * (dragSpeed / SPEED);
+          }
+        }
+      }
+      moveX = Math.min(Math.max(moveX, -1), 1);
+      moveY = Math.min(Math.max(moveY, -1), 1);
       squareX = Math.min(
         Math.max(squareX + moveX * SPEED * deltaTime, 0),
         VIEW_WIDTH - SQUARE_SIZE,
@@ -318,7 +374,7 @@ try {
       logoModel.transform.scaleY = pulse;
       logoView.sync();
 
-      playHint.text = `held keys: ${heldKeys} — Esc returns to the menu`;
+      playHint.text = `held keys: ${heldKeys} — ${controllerStatus} — Esc returns to the menu`;
       if (input.wasKeyPressed("Escape")) {
         scenes.goTo("menu");
       }
@@ -358,6 +414,7 @@ try {
     try {
       devtools?.dispose(); // DevTools only ever detaches itself.
       domInput.dispose();
+      gamepadInput.dispose(); // stops gamepad observation before the state goes
       scenes.dispose();
       audio.dispose();
     } catch (error: unknown) {
@@ -370,6 +427,7 @@ try {
   });
 
   domInput.attach();
+  gamepadInput.attach();
   scenes.start();
   game.start();
 

@@ -18,6 +18,7 @@ pnpm workspace (see [pnpm-workspace.yaml](pnpm-workspace.yaml)):
 | `@g2w/core`                | [packages/core](packages/core/package.json)                   | Renderer-agnostic contracts and runtime (zero runtime dependencies)              |
 | `@g2w/renderer-pixi`       | [packages/renderer-pixi](packages/renderer-pixi/package.json) | PixiJS 8 implementation of the renderer contract + texture loader + sprite views |
 | `@g2w/input-dom`           | [packages/input-dom](packages/input-dom/package.json)         | Browser event adapter feeding core `InputState`                                  |
+| `@g2w/input-gamepad`       | [packages/input-gamepad](packages/input-gamepad/package.json) | Gamepad API adapter sampling core `GamepadState`                                 |
 | `@g2w/audio-web`           | [packages/audio-web](packages/audio-web/package.json)         | Web Audio backend implementing the core `AudioBackend` contract                  |
 | `@g2w/example-hello-world` | [examples/hello-world](examples/hello-world/package.json)     | Vite browser demo consuming only public package exports                          |
 
@@ -87,8 +88,10 @@ const game = new Game({
 
 ## 7. Input handling
 
-- [`InputState`](packages/core/src/input.ts) is the DOM-free state machine: keyboard held/pressed/released edges, pointer position/buttons, focus-loss release. Edge states reset only at an explicit `endFrame()` boundary — placed **after every consumer** in the frame.
-- [`DomInput`](packages/input-dom/src/index.ts) (`@g2w/input-dom`) subscribes to real events (keyboard on an injectable target, pointer on the canvas, `pointerup` on `window`, `blur`), normalizes pointer coordinates to canvas pixels accounting for CSS scaling, and never calls `preventDefault()`. `attach()` is idempotent; `dispose()` removes every registered listener; a disposed adapter cannot re-attach.
+- [`InputState`](packages/core/src/input.ts) is the DOM-free state machine: keyboard held/pressed/released edges, pointer position/buttons, multi-touch contacts keyed by stable contact id (start/move/end plus a distinct cancel edge), focus-loss release. Edge states reset only at an explicit `endFrame()` boundary — placed **after every consumer** in the frame.
+- [`DomInput`](packages/input-dom/src/index.ts) (`@g2w/input-dom`) subscribes to real events (keyboard on an injectable target, pointer on the canvas, `pointerup` and `pointercancel` on `window`, `blur`), normalizes pointer coordinates to canvas pixels accounting for CSS scaling, feeds touch contacts (`pointerType === "touch"`) into the multi-touch contract by `pointerId`, and never calls `preventDefault()`. `attach()` is idempotent; `dispose()` removes every registered listener; a disposed adapter cannot re-attach.
+- [`GamepadState`](packages/core/src/gamepad.ts) is the DOM-free gamepad state machine: per-controller buttons with per-frame edges, raw analog axes (no imposed dead zone), and an explicit connect/disconnect policy — disconnecting releases held buttons with edges and clears stale state.
+- [`GamepadInput`](packages/input-gamepad/src/index.ts) (`@g2w/input-gamepad`) samples controllers through an injectable polling source; the host calls `poll()` once per game frame (no second loop, no timers). Indices absent from a poll result are treated as disconnected; source errors propagate. `attach()`/`dispose()` are idempotent, disposal is terminal.
 
 ## 8. Renderer adapter contract
 
@@ -121,7 +124,7 @@ The policies compose: exactly one framework-wide texture lifetime exists — the
 
 ## 11. Error handling and disposal
 
-Every package defines one narrow error class (`GameError`, `SceneError`, `RendererError`, `AssetError`, `AudioError`, `DomInputError`, `SpriteViewError`, `WebAudioError`); hook/loader errors are never wrapped — they propagate unchanged to the caller of the triggering method. Disposal everywhere is terminal and idempotent; multi-target cleanup (scene manager, asset manager) is best-effort with the first error rethrown and several failures aggregated as `AggregateError`.
+Every package defines one narrow error class (`GameError`, `SceneError`, `RendererError`, `AssetError`, `AudioError`, `DomInputError`, `GamepadInputError`, `SpriteViewError`, `WebAudioError`); hook/loader errors are never wrapped — they propagate unchanged to the caller of the triggering method. Disposal everywhere is terminal and idempotent; multi-target cleanup (scene manager, asset manager) is best-effort with the first error rethrown and several failures aggregated as `AggregateError`.
 
 **Audio ownership (R4):** `AudioManager` owns _playback lifetimes_, never sounds. `dispose()` stops every active playback, clears its cache, and releases backend resources (`backend.dispose()` — in `@g2w/audio-web`, closing the `AudioContext`) at most once, but it never destroys `Sound` values: decoded audio is caller/backend-owned and may be shared between managers or subsystems, mirroring the non-destructive texture policy. Autoplay policy is part of the contract: `play()` against a suspended context throws `WebAudioError` (never silently inaudible playback); the application calls `resume()` from a user-gesture handler.
 

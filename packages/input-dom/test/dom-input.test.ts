@@ -6,7 +6,14 @@ import { DomInput, DomInputError } from "../src/index.js";
 class FakeDomEvent extends Event {
   constructor(
     type: string,
-    fields: { code?: string; button?: number; clientX?: number; clientY?: number } = {},
+    fields: {
+      code?: string;
+      button?: number;
+      clientX?: number;
+      clientY?: number;
+      pointerType?: string;
+      pointerId?: number;
+    } = {},
   ) {
     super(type);
     if (fields.code !== undefined) {
@@ -17,6 +24,8 @@ class FakeDomEvent extends Event {
     }
     Object.defineProperty(this, "clientX", { value: fields.clientX ?? 0 });
     Object.defineProperty(this, "clientY", { value: fields.clientY ?? 0 });
+    Object.defineProperty(this, "pointerType", { value: fields.pointerType ?? "mouse" });
+    Object.defineProperty(this, "pointerId", { value: fields.pointerId ?? 1 });
   }
 }
 
@@ -297,6 +306,7 @@ describe("DomInput lifecycle", () => {
       "pointermove",
       "pointerdown",
       "pointerup",
+      "pointercancel",
       "pointerleave",
     ]);
     for (const target of [keyTarget, blurTarget, pointerUpTarget, canvas]) {
@@ -335,5 +345,136 @@ describe("DomInput lifecycle", () => {
     expect(domInput.attached).toBe(true);
     domInput.dispose();
     expect(domInput.attached).toBe(false);
+  });
+});
+
+describe("DomInput touch normalization (R5)", () => {
+  it("feeds touch pointer events into the multi-touch contract by pointerId", () => {
+    const { input, canvas, pointerUpTarget } = createAttached();
+
+    // Client (164, 86) with the rect at (100, 50) is canvas-relative (64, 36).
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", {
+        button: 0,
+        clientX: 164,
+        clientY: 86,
+        pointerType: "touch",
+        pointerId: 5,
+      }),
+    );
+    expect(input.touchCount).toBe(1);
+    expect(input.isTouchActive(5)).toBe(true);
+    expect(input.wasTouchStarted(5)).toBe(true);
+    expect(input.getTouchPosition(5)).toEqual({ x: 64, y: 36 });
+
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointermove", {
+        clientX: 200,
+        clientY: 120,
+        pointerType: "touch",
+        pointerId: 5,
+      }),
+    );
+    expect(input.getTouchPosition(5)).toEqual({ x: 100, y: 70 });
+
+    pointerUpTarget.dispatchEvent(
+      new FakeDomEvent("pointerup", { button: 0, pointerType: "touch", pointerId: 5 }),
+    );
+    expect(input.isTouchActive(5)).toBe(false);
+    expect(input.wasTouchEnded(5)).toBe(true);
+    expect(input.wasTouchCancelled(5)).toBe(false);
+  });
+
+  it("tracks multiple simultaneous touch contacts independently", () => {
+    const { input, canvas } = createAttached();
+
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", {
+        clientX: 130,
+        clientY: 90,
+        pointerType: "touch",
+        pointerId: 1,
+      }),
+    );
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", {
+        clientX: 230,
+        clientY: 190,
+        pointerType: "touch",
+        pointerId: 2,
+      }),
+    );
+
+    expect(input.touchCount).toBe(2);
+    expect(input.activeTouchIds()).toEqual([1, 2]);
+    expect(input.getTouchPosition(1)).toEqual({ x: 30, y: 40 });
+    expect(input.getTouchPosition(2)).toEqual({ x: 130, y: 140 });
+  });
+
+  it("cancels the touch contact on pointercancel for touch pointers", () => {
+    const { input, canvas, pointerUpTarget } = createAttached();
+
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", {
+        clientX: 130,
+        clientY: 90,
+        pointerType: "touch",
+        pointerId: 3,
+      }),
+    );
+    pointerUpTarget.dispatchEvent(
+      new FakeDomEvent("pointercancel", { pointerType: "touch", pointerId: 3 }),
+    );
+
+    expect(input.isTouchActive(3)).toBe(false);
+    expect(input.wasTouchCancelled(3)).toBe(true);
+    expect(input.wasTouchEnded(3)).toBe(false);
+  });
+
+  it("releases held buttons on pointercancel for non-touch pointers", () => {
+    const { input, canvas, pointerUpTarget } = createAttached();
+
+    canvas.dispatchEvent(new FakeDomEvent("pointerdown", { button: 0, clientX: 130, clientY: 90 }));
+    pointerUpTarget.dispatchEvent(new FakeDomEvent("pointercancel", { button: 0 }));
+
+    expect(input.isButtonDown(0)).toBe(false);
+    expect(input.wasButtonReleased(0)).toBe(true);
+  });
+
+  it("keeps mouse pointer events out of the touch contract", () => {
+    const { input, canvas } = createAttached();
+
+    canvas.dispatchEvent(new FakeDomEvent("pointerdown", { button: 0, clientX: 130, clientY: 90 }));
+    canvas.dispatchEvent(new FakeDomEvent("pointermove", { clientX: 140, clientY: 100 }));
+
+    expect(input.touchCount).toBe(0);
+    expect(input.isButtonDown(0)).toBe(true);
+  });
+
+  it("maps touch coordinates through the logical size like pointer coordinates", () => {
+    const input = new InputState();
+    const canvas = createFakeCanvas();
+    // 640x360 canvas rendered at 320x180 CSS pixels: half-size mapping.
+    canvas.setRect({ left: 0, top: 0, width: 320, height: 180 });
+    const domInput = new DomInput(input, {
+      canvas: canvas as unknown as HTMLCanvasElement,
+      keyTarget: new FakeTarget(),
+      blurTarget: new FakeTarget(),
+      pointerUpTarget: new FakeTarget(),
+      logicalSize: { width: 1280, height: 720 },
+    });
+    domInput.attach();
+
+    canvas.dispatchEvent(
+      new FakeDomEvent("pointerdown", {
+        clientX: 160,
+        clientY: 90,
+        pointerType: "touch",
+        pointerId: 7,
+      }),
+    );
+
+    // (160, 90) CSS is exactly half the canvas, so (640, 360) in logical space.
+    expect(input.getTouchPosition(7)).toEqual({ x: 640, y: 360 });
   });
 });

@@ -32,6 +32,20 @@
  * - Pointer leaving the canvas (`handlePointerLeave`) releases held pointer
  *   buttons with their edges (the matching `pointerup` may happen off-canvas)
  *   and keeps the last pointer position.
+ *
+ * # Touch contacts
+ *
+ * - Beyond the single-pointer view, adapters feed individual touch contacts
+ *   through `handleTouchStart`/`handleTouchMove`/`handleTouchEnd`/
+ *   `handleTouchCancel` keyed by the contact's stable id (the DOM
+ *   `pointerId` for pointer-event adapters). Multiple simultaneous contacts
+ *   are supported.
+ * - Touch edges (`wasTouchStarted`/`wasTouchEnded`/`wasTouchCancelled`)
+ *   follow the same per-frame semantics as keys and buttons: set by events,
+ *   reset together at `endFrame()`.
+ * - Focus loss cancels every active contact with a cancelled edge; adapter
+ *   disposal and `pointercancel` reach the same policy through
+ *   `handleTouchCancel`.
  */
 export class InputState {
   readonly #keysDown = new Set<string>();
@@ -45,6 +59,11 @@ export class InputState {
   #pointerX = 0;
   #pointerY = 0;
   #hasPointerPosition = false;
+
+  readonly #touches = new Map<number, { x: number; y: number }>();
+  readonly #touchesStarted = new Set<number>();
+  readonly #touchesEnded = new Set<number>();
+  readonly #touchesCancelled = new Set<number>();
 
   // --- Adapter-facing feed -------------------------------------------------
 
@@ -101,6 +120,12 @@ export class InputState {
       this.#buttonsReleased.add(button);
     }
     this.#buttonsDown.clear();
+    // Every touch contact dies with the page's focus; the positions go
+    // with them (there is no meaningful place to keep pointing at).
+    for (const id of this.#touches.keys()) {
+      this.#touchesCancelled.add(id);
+    }
+    this.#touches.clear();
   }
 
   /**
@@ -112,6 +137,59 @@ export class InputState {
       this.#buttonsReleased.add(button);
     }
     this.#buttonsDown.clear();
+  }
+
+  /**
+   * Record the start of a touch contact. `id` is the adapter's stable
+   * contact identifier (the DOM `pointerId` for pointer-event adapters);
+   * coordinates use the same canvas-relative space as the pointer.
+   * Non-finite coordinates are ignored, so a broken event payload cannot
+   * poison positions. Starting an already-active contact updates its
+   * position and does not create a second start edge.
+   */
+  handleTouchStart(id: number, x: number, y: number): void {
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+    if (!this.#touches.has(id)) {
+      this.#touchesStarted.add(id);
+      this.#touchesEnded.delete(id);
+      this.#touchesCancelled.delete(id);
+    }
+    this.#touches.set(id, { x, y });
+  }
+
+  /** Record movement of an active touch contact. Unknown ids are ignored. */
+  handleTouchMove(id: number, x: number, y: number): void {
+    const touch = this.#touches.get(id);
+    if (touch === undefined || !Number.isFinite(x) || !Number.isFinite(y)) {
+      return;
+    }
+    touch.x = x;
+    touch.y = y;
+  }
+
+  /** Record the end of a touch contact. Unknown ids are ignored. */
+  handleTouchEnd(id: number): void {
+    if (this.#touches.delete(id)) {
+      this.#touchesEnded.add(id);
+      this.#touchesStarted.delete(id);
+      this.#touchesCancelled.delete(id);
+    }
+  }
+
+  /**
+   * Record the cancellation of a touch contact (e.g. the browser claims
+   * the gesture for page scrolling). Unknown ids are ignored. Cancellation
+   * has its own edge so game code can distinguish an intentional lift from
+   * a system take-over.
+   */
+  handleTouchCancel(id: number): void {
+    if (this.#touches.delete(id)) {
+      this.#touchesCancelled.add(id);
+      this.#touchesStarted.delete(id);
+      this.#touchesEnded.delete(id);
+    }
   }
 
   // --- Game-facing queries -------------------------------------------------
@@ -161,6 +239,42 @@ export class InputState {
     return this.#hasPointerPosition;
   }
 
+  /** Number of currently active touch contacts. */
+  get touchCount(): number {
+    return this.#touches.size;
+  }
+
+  /** Ids of every active touch contact, sorted ascending. */
+  activeTouchIds(): number[] {
+    return [...this.#touches.keys()].sort((a, b) => a - b);
+  }
+
+  /** Whether a touch contact is currently active. */
+  isTouchActive(id: number): boolean {
+    return this.#touches.has(id);
+  }
+
+  /** Position of an active touch contact, or `undefined` when absent. */
+  getTouchPosition(id: number): { x: number; y: number } | undefined {
+    const touch = this.#touches.get(id);
+    return touch === undefined ? undefined : { x: touch.x, y: touch.y };
+  }
+
+  /** Whether the contact started since the last `endFrame()`. */
+  wasTouchStarted(id: number): boolean {
+    return this.#touchesStarted.has(id);
+  }
+
+  /** Whether the contact ended since the last `endFrame()`. */
+  wasTouchEnded(id: number): boolean {
+    return this.#touchesEnded.has(id);
+  }
+
+  /** Whether the contact was cancelled since the last `endFrame()`. */
+  wasTouchCancelled(id: number): boolean {
+    return this.#touchesCancelled.has(id);
+  }
+
   /**
    * Reset every per-frame edge state (pressed and released, keys and
    * buttons). Call exactly once per game frame after all consumers read the
@@ -171,5 +285,8 @@ export class InputState {
     this.#keysReleased.clear();
     this.#buttonsPressed.clear();
     this.#buttonsReleased.clear();
+    this.#touchesStarted.clear();
+    this.#touchesEnded.clear();
+    this.#touchesCancelled.clear();
   }
 }

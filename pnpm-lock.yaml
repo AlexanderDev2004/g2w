@@ -235,6 +235,9 @@ importers:
       '@g2w/input-dom':
         specifier: workspace:*
         version: link:../../packages/input-dom
+      '@g2w/input-gamepad':
+        specifier: workspace:*
+        version: link:../../packages/input-gamepad
       '@g2w/renderer-pixi':
         specifier: workspace:*
         version: link:../../packages/renderer-pixi
@@ -261,6 +264,12 @@ importers:
         version: link:../core
 
   packages/input-dom:
+    dependencies:
+      '@g2w/core':
+        specifier: workspace:*
+        version: link:../core
+
+  packages/input-gamepad:
     dependencies:
       '@g2w/core':
         specifier: workspace:*

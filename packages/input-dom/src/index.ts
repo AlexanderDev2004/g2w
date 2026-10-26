@@ -48,6 +48,14 @@ interface ListenerRegistration {
  * its own beyond normalization — coordinates are converted to canvas-relative
  * pixels and event payloads are mapped to `InputState`'s feed methods.
  *
+ * Touch policy: touch contact events arrive through the same Pointer Events
+ * stream and are additionally fed into `InputState`'s multi-touch contract
+ * keyed by `pointerId` (`pointerType === "touch"` only), so game code can
+ * track several simultaneous contacts while the single-pointer view keeps
+ * working unchanged for mouse and keyboard users. `pointercancel` releases
+ * the cancelled contact (and button state for non-touch pointers) — a
+ * cancelled pointer never leaves state stuck as held.
+ *
  * Listener policy:
  * - `attach()` is idempotent; repeated calls never duplicate listeners.
  * - `dispose()` removes every listener this adapter registered and is
@@ -111,15 +119,38 @@ export class DomInput {
       const pointerEvent = event as PointerEvent;
       const [x, y] = this.#toCanvasCoordinates(pointerEvent.clientX, pointerEvent.clientY);
       this.#state.handlePointerMove(x, y);
+      if (pointerEvent.pointerType === "touch") {
+        this.#state.handleTouchMove(pointerEvent.pointerId, x, y);
+      }
     });
     this.#register(canvas, "pointerdown", (event) => {
       const pointerEvent = event as PointerEvent;
       const [x, y] = this.#toCanvasCoordinates(pointerEvent.clientX, pointerEvent.clientY);
       this.#state.handlePointerMove(x, y);
       this.#state.handleButtonDown(pointerEvent.button);
+      if (pointerEvent.pointerType === "touch") {
+        this.#state.handleTouchStart(pointerEvent.pointerId, x, y);
+      }
     });
     this.#register(pointerUpTarget, "pointerup", (event) => {
-      this.#state.handleButtonUp((event as PointerEvent).button);
+      const pointerEvent = event as PointerEvent;
+      this.#state.handleButtonUp(pointerEvent.button);
+      if (pointerEvent.pointerType === "touch") {
+        this.#state.handleTouchEnd(pointerEvent.pointerId);
+      }
+    });
+    // A cancelled pointer (the browser claims the gesture for scrolling, an
+    // incoming call, palm rejection, ...) never produces a matching `up`:
+    // release the button state and cancel the touch contact so nothing
+    // stays held. `preventDefault` stays untouched — scrolling behavior is
+    // the page's choice, not this adapter's.
+    this.#register(pointerUpTarget, "pointercancel", (event) => {
+      const pointerEvent = event as PointerEvent;
+      if (pointerEvent.pointerType === "touch") {
+        this.#state.handleTouchCancel(pointerEvent.pointerId);
+      } else {
+        this.#state.handlePointerLeave();
+      }
     });
     this.#register(canvas, "pointerleave", () => {
       this.#state.handlePointerLeave();

@@ -15,7 +15,8 @@ Owns the renderer-agnostic **contract** and the **game runtime**. Concretely, th
 - `RendererError` — thrown for invalid renderer lifecycle usage.
 - `Game` / `GameOptions` / `GameState` — the runtime that owns a renderer and a frame loop (see below).
 - `Scene` / `SceneManager` / `SceneManagerOptions` / `SceneError` — the renderer-agnostic scene system (see below).
-- `InputState` — the DOM-free keyboard and pointer state machine (see below).
+- `InputState` — the DOM-free keyboard, pointer, and touch state machine (see below).
+- `GamepadState` / `GamepadSnapshot` — the DOM-free gamepad state machine (see below).
 - `AssetManager` / `AssetLoader` / `AssetManagerOptions` / `AssetError` — the renderer-agnostic asset cache (see below).
 - `Transform2D` / `Anchor2D` / `Sprite2D` / `Sprite2DInit` / `Transform2DInit` / `Anchor2DInit` — the renderer-agnostic 2D transform and sprite model (see below).
 - `GameObject` / `GameObjectCollection` — the minimal renderer-agnostic game-object layer (see below).
@@ -30,7 +31,11 @@ Implements the core contract on top of PixiJS 8. It wraps a PixiJS `Application`
 
 ### `@g2w/input-dom`
 
-Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` on `window` so off-canvas releases are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative, scaled into the configured `logicalSize` game space when provided — see the sizing section — otherwise into the canvas's backing pixels), and feeds the core `InputState`. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
+Implements the browser side of the input system on top of the core contract. `DomInput` subscribes to real DOM events (keyboard on an injectable target, default `window`; pointer events on the canvas; `pointerup` and `pointercancel` on `window` so off-canvas releases and cancellations are caught; `blur` for focus loss), normalizes them (pointer coordinates become canvas-relative, scaled into the configured `logicalSize` game space when provided — see the sizing section — otherwise into the canvas's backing pixels), and feeds the core `InputState`. Touch contacts ride the same Pointer Events stream: contacts with `pointerType === "touch"` are additionally fed into `InputState`'s multi-touch contract keyed by `pointerId`, and `pointercancel` cancels the touch contact (or releases held buttons for non-touch pointers) so a browser-claimed gesture never leaves state stuck as held. It owns no input logic: `attach()` is idempotent, `dispose()` removes every listener it registered, and it never calls `preventDefault()`. Like the renderer adapter, it depends on `@g2w/core` and never the other way around.
+
+### `@g2w/input-gamepad`
+
+Implements the browser side of the gamepad system on top of the core contract. `GamepadInput` samples controllers and feeds the core `GamepadState`: the polling source is injectable (default `navigator.getGamepads()`, mapped to a structural view so tests pass plain objects and hardware availability is never required to import, construct, or test the package), connection events arrive on injectable `EventTarget`s (default `window`, resolved at `attach()` so construction needs no browser). Sampling is explicit with no second loop and no timers — the host calls `poll()` once per game frame, and any previously connected index absent from the poll result is treated as disconnected so stale button/axis state is never retained for a controller that vanished without an event. Source errors propagate to the caller (state untouched; the next poll retries). `attach()` is idempotent, `dispose()` removes every listener and is terminal. Axes are passed through raw — no dead zone is imposed. The package depends only on `@g2w/core` and never the other way around.
 
 ### `@g2w/audio-web`
 
@@ -89,17 +94,27 @@ Intentionally unsupported (documented scope, not omissions by accident): scene s
 
 ### `InputState` — input and frame semantics
 
-`InputState` (in core) is a DOM-free, renderer-agnostic state machine for keyboard and pointer input. Browser adapters feed it normalized events (`handleKeyDown`, `handleKeyUp`, `handlePointerMove`, `handleButtonDown`, `handleButtonUp`, `handleFocusLoss`, `handlePointerLeave`); game and scene code reads it through query methods (`isKeyDown`, `wasKeyPressed`, `wasKeyReleased`, `isButtonDown`, `wasButtonPressed`, `wasButtonReleased`, `pointerX`/`pointerY`). It is a plain class with no dependencies and no access to `window`, `document`, or DOM event types at runtime — the architecture test enforces this.
+`InputState` (in core) is a DOM-free, renderer-agnostic state machine for keyboard, pointer, and touch input. Browser adapters feed it normalized events (`handleKeyDown`, `handleKeyUp`, `handlePointerMove`, `handleButtonDown`, `handleButtonUp`, `handleFocusLoss`, `handlePointerLeave`, and the touch-contact feed `handleTouchStart`/`handleTouchMove`/`handleTouchEnd`/`handleTouchCancel`); game and scene code reads it through query methods (`isKeyDown`, `wasKeyPressed`, `wasKeyReleased`, `isButtonDown`, `wasButtonPressed`, `wasButtonReleased`, `pointerX`/`pointerY`, and the touch queries `touchCount`, `activeTouchIds`, `isTouchActive`, `getTouchPosition`, `wasTouchStarted`, `wasTouchEnded`, `wasTouchCancelled`). It is a plain class with no dependencies and no access to `window`, `document`, or DOM event types at runtime — the architecture test enforces this.
 
 Frame semantics (all covered by tests in `packages/core/test/input.test.ts`):
 - **Held state is continuous** (`down`); **pressed/released are per-frame edges**. Edges are set by input events and reset — all at once — only at the explicit boundary `endFrame()`.
 - **The boundary is composed, not built in:** applications call `input.endFrame()` exactly once per frame, after every consumer, typically as the last statement of `Game.onUpdate` after scene updates. Events arriving between frames accumulate into the next frame's edges; no second loop or hidden timer exists.
 - **A tap between two frames is not lost:** a key pressed and released before the next boundary reports `wasKeyPressed` _and_ `wasKeyReleased` in that frame while `isKeyDown` is already `false`.
 - **OS key repeat is not a new press:** repeated `keydown` events while a key is held are ignored; the press edge fires once per physical press.
-- **Focus loss** releases every held key and button and generates the matching released edges (game logic observes a normal release); the pointer position is kept. **Pointer leaving the canvas** releases held buttons the same way (the `pointerup` may happen off-canvas) and keeps the position.
+- **Focus loss** releases every held key and button and generates the matching released edges (game logic observes a normal release); the pointer position is kept, and every active touch contact is cancelled with a cancelled edge. **Pointer leaving the canvas** releases held buttons the same way (the `pointerup` may happen off-canvas) and keeps the position.
 - Key identifiers are standard `KeyboardEvent.code` strings (`"KeyW"`, `"ArrowLeft"`, `"Space"`, ...); pointer buttons are numbered as in `MouseEvent.button` (0 = primary).
 
-Intentionally unsupported (documented scope, not omissions by accident): gamepad, touch gestures, action mapping or rebinding, input recording, drag-and-drop, and preventing default browser behavior from the framework.
+**Touch contacts (R5):** beyond the single-pointer view, adapters feed each contact individually, keyed by a stable id (the DOM `pointerId` for pointer-event adapters), so multiple simultaneous contacts are trackable (`touchCount`, `activeTouchIds`, `getTouchPosition(id)`). Touch edges follow the same per-frame semantics as keys and buttons. Cancellation is distinct from a normal end (`wasTouchCancelled`), so game code can tell an intentional lift from the browser claiming the gesture (page scroll, incoming call, palm rejection). Non-finite coordinates are ignored — a broken event payload cannot poison positions. The single-pointer view is unaffected by touch feeding, so mouse and keyboard behavior is unchanged.
+
+Intentionally unsupported (documented scope, not omissions by accident): action mapping or rebinding, input recording, drag-and-drop, and preventing default browser behavior from the framework.
+
+### `GamepadState` — gamepad and frame semantics
+
+`GamepadState` (in core) is the DOM-free gamepad counterpart to `InputState`: a plain state machine keyed by controller index (tests in `packages/core/test/gamepad.test.ts`). A browser adapter samples hardware and feeds `handleConnected(index)`, `handleDisconnected(index)`, and `handleSample(index, snapshot)` where a snapshot is `{ pressed: readonly boolean[], axes: readonly number[] }` — plain values, no DOM `Gamepad` types in core.
+- **Edges are per game frame, not per sample.** An adapter may poll many times between two boundaries; a button that went down and up within one frame reports both `wasButtonPressed` and `wasButtonReleased` that frame. `endFrame()` resets all edges across all controllers and touches nothing else.
+- **Disconnection clears everything.** `handleDisconnected(index)` — from a `gamepaddisconnected` event or an adapter noticing a vacant slot in a poll result — releases every held button with released edges and drops the axes; a reconnected controller (possibly at a different slot) starts from a clean slate. Hardware indices are not stable across reconnects; `index` means "the controller currently at this slot".
+- **Axes are raw.** Values are stored as sampled; no dead zone, no normalization — game code applies its own thresholds. Unsampled axes read neutral `0`; non-finite values from a broken sample are ignored.
+- **A sample implies connection.** The first sample for an index marks it connected; adapters that only sample (no connection events) still work.
 
 ### `AssetManager` — assets, caching, and ownership
 
@@ -214,6 +229,7 @@ Why core stays renderer-agnostic:
 - `packages/renderer-pixi/test/pixi-renderer.test.ts` asserts the adapter declares `@g2w/core` as a dependency and that core does not depend back on the adapter.
 - `packages/renderer-pixi/test/assets.test.ts` asserts the texture asset manager composes with the core `AssetManager` and that shared textures are destroyed exactly once.
 - `packages/input-dom/test/package.test.ts` asserts the DOM input adapter declares `@g2w/core` as a dependency and composes with the core `InputState`.
+- `packages/input-gamepad/test/package.test.ts` asserts the gamepad adapter declares only `@g2w/core` as a dependency and composes with the core `GamepadState` through the public entry points.
 - `packages/devtools/test/package.test.ts` asserts the DevTools package declares only `@g2w/core` as a dependency and composes with the core `SceneManager`/`InputState` through the public entry points.
 - `packages/audio-web/test/package.test.ts` asserts the audio backend declares only `@g2w/core` as a dependency and implements the core `AudioBackend` contract through the public entry points.
 - `pnpm verify:exports` (also run in CI) loads the built packages through their real entry points.

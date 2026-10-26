@@ -3,6 +3,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/input-dom" },
+    { "path": "packages/input-gamepad" },
     { "path": "packages/renderer-pixi" },
     { "path": "packages/audio-web" },
     { "path": "packages/devtools" }

@@ -335,3 +335,115 @@ describe("Input integration with Game and SceneManager", () => {
     await game.dispose();
   });
 });
+
+describe("InputState touch contacts", () => {
+  it("tracks a contact through start, move, and end", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(11, 30, 40);
+    expect(input.touchCount).toBe(1);
+    expect(input.isTouchActive(11)).toBe(true);
+    expect(input.wasTouchStarted(11)).toBe(true);
+    expect(input.getTouchPosition(11)).toEqual({ x: 30, y: 40 });
+
+    input.handleTouchMove(11, 50, 60);
+    expect(input.getTouchPosition(11)).toEqual({ x: 50, y: 60 });
+
+    input.handleTouchEnd(11);
+    expect(input.isTouchActive(11)).toBe(false);
+    expect(input.getTouchPosition(11)).toBeUndefined();
+    expect(input.wasTouchEnded(11)).toBe(true);
+  });
+
+  it("supports multiple simultaneous contacts independently", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(2, 10, 20);
+    input.handleTouchStart(7, 30, 40);
+    expect(input.touchCount).toBe(2);
+    expect(input.activeTouchIds()).toEqual([2, 7]);
+
+    input.handleTouchMove(7, 35, 45);
+    input.handleTouchEnd(2);
+
+    expect(input.activeTouchIds()).toEqual([7]);
+    expect(input.getTouchPosition(7)).toEqual({ x: 35, y: 45 });
+    expect(input.wasTouchEnded(2)).toBe(true);
+    expect(input.wasTouchEnded(7)).toBe(false);
+  });
+
+  it("does not duplicate the start edge when an active contact restarts", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(3, 1, 2);
+    input.handleTouchStart(3, 5, 6);
+
+    expect(input.touchCount).toBe(1);
+    expect(input.getTouchPosition(3)).toEqual({ x: 5, y: 6 });
+    expect(input.wasTouchStarted(3)).toBe(true);
+  });
+
+  it("cancels a contact with its own edge, distinct from a normal end", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(4, 10, 10);
+    input.handleTouchCancel(4);
+
+    expect(input.isTouchActive(4)).toBe(false);
+    expect(input.wasTouchCancelled(4)).toBe(true);
+    expect(input.wasTouchEnded(4)).toBe(false);
+  });
+
+  it("ignores unknown ids and non-finite coordinates", () => {
+    const input = new InputState();
+
+    input.handleTouchMove(9, 5, 5);
+    input.handleTouchEnd(9);
+    input.handleTouchCancel(9);
+    input.handleTouchStart(1, Number.NaN, 5);
+    input.handleTouchStart(1, 5, Number.POSITIVE_INFINITY);
+    input.handleTouchStart(1, 5, 5);
+    input.handleTouchMove(1, Number.NaN, 5);
+
+    expect(input.touchCount).toBe(1);
+    expect(input.getTouchPosition(1)).toEqual({ x: 5, y: 5 });
+    expect(input.wasTouchStarted(1)).toBe(true);
+  });
+
+  it("resets touch edges at endFrame while keeping active contacts", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(1, 10, 10);
+    input.handleTouchStart(2, 20, 20);
+    input.handleTouchCancel(2);
+
+    input.endFrame();
+
+    expect(input.wasTouchStarted(1)).toBe(false);
+    expect(input.wasTouchCancelled(2)).toBe(false);
+    expect(input.isTouchActive(1)).toBe(true);
+  });
+
+  it("cancels every active contact on focus loss", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(1, 10, 10);
+    input.handleTouchStart(2, 20, 20);
+    input.handleFocusLoss();
+
+    expect(input.touchCount).toBe(0);
+    expect(input.wasTouchCancelled(1)).toBe(true);
+    expect(input.wasTouchCancelled(2)).toBe(true);
+    expect(input.wasTouchEnded(1)).toBe(false);
+  });
+
+  it("leaves the single-pointer view untouched by touch contacts", () => {
+    const input = new InputState();
+
+    input.handleTouchStart(1, 10, 10);
+    input.handleTouchEnd(1);
+
+    expect(input.hasPointerPosition).toBe(false);
+    expect(input.isButtonDown(0)).toBe(false);
+  });
+});

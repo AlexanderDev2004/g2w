@@ -52,6 +52,19 @@ export interface PixiRendererOptions {
  * The stage is exposed so applications can add content without a broader
  * scene API — this is a provisional, minimal capability.
  *
+ * Lifecycle: `initialize()` coalesces concurrent calls onto one in-flight
+ * initialization, so the renderer never creates more than one `Application`.
+ * A failed initialization rolls back — the partially initialized application
+ * is destroyed best-effort — and rethrows the original error; a cleanup
+ * failure is aggregated (`AggregateError`) instead of masking it, and the
+ * renderer returns to a state where initialization can be retried.
+ * `dispose()` destroys the application synchronously when nothing is in
+ * flight (so a fire-and-forget `dispose(); init()` sequence keeps working),
+ * and waits for a pending initialization before destroying it; concurrent
+ * and repeated calls share one disposal, and a completed disposal rejects
+ * further `dispose()` calls like any other uninitialized state. After a
+ * completed disposal the renderer can be initialized again.
+ *
  * Ownership — the renderer owns **display objects, never textures**: disposal
  * destroys the display objects still attached to the stage, but no texture or
  * texture source. Stage-attached textures typically come from PixiJS's shared
@@ -68,8 +81,23 @@ export class PixiRenderer implements Renderer {
     displayName: "PixiJS",
   };
 
+  /**
+   * The application, assigned only once its `init()` has resolved — so
+   * `initialized` stays false while initialization is pending and every
+   * accessor keeps rejecting with the uninitialized contract.
+   */
   #application: PixiApplicationLike | null = null;
   readonly #createApplication: () => PixiApplicationLike;
+
+  /**
+   * `initializing` and the in-flight wait of a deferred disposal carry their
+   * work in these promises; every other state transition is synchronous.
+   * `#disposePromise` is non-null only while a deferred disposal (one that
+   * had to wait for a pending initialization) is still running.
+   */
+  #lifecycle: "new" | "initializing" | "initialized" = "new";
+  #initPromise: Promise<void> | null = null;
+  #disposePromise: Promise<void> | null = null;
 
   constructor(options: PixiRendererOptions = {}) {
     this.#createApplication = options.createApplication ?? (() => new Application());
@@ -91,40 +119,106 @@ export class PixiRenderer implements Renderer {
     return application.stage;
   }
 
-  async initialize(options: RendererInitOptions): Promise<void> {
-    if (this.#application !== null) {
-      throw new RendererError(
-        "PixiRenderer is already initialized. Call dispose() before initializing it again.",
+  /**
+   * Create and initialize the PixiJS `Application`. Concurrent calls share
+   * one in-flight initialization — the renderer is never initialized twice
+   * and never owns more than one Application. On failure the partially
+   * initialized application is destroyed (best-effort) and the original
+   * error is rethrown; a rollback failure is aggregated with it instead of
+   * masking it. After a failure the renderer may be initialized again.
+   *
+   * Rejects with {@link RendererError} while a deferred disposal is still
+   * running — await `dispose()` before initializing again.
+   */
+  initialize(options: RendererInitOptions): Promise<void> {
+    // Checked before the coalescing guard: if a deferred disposal has
+    // started while initialization is pending, joining the pending init
+    // would hand the caller a promise that resolves even though the
+    // disposal is about to destroy the application.
+    if (this.#disposePromise !== null) {
+      return Promise.reject(
+        new RendererError("PixiRenderer is disposing; await dispose() before initializing again."),
+      );
+    }
+    if (this.#lifecycle === "initializing" && this.#initPromise !== null) {
+      return this.#initPromise;
+    }
+    if (this.#lifecycle === "initialized") {
+      return Promise.reject(
+        new RendererError(
+          "PixiRenderer is already initialized. Call dispose() before initializing it again.",
+        ),
       );
     }
 
     // Logical resolution: both dimensions or neither, finite and > 0. When
     // omitted, PixiJS's own default (800×600) applies — the pre-R3 behavior.
     if ((options.width === undefined) !== (options.height === undefined)) {
-      throw new RendererError("PixiRenderer requires both width and height, or neither.");
+      return Promise.reject(
+        new RendererError("PixiRenderer requires both width and height, or neither."),
+      );
     }
     if (
       (options.width !== undefined && (!Number.isFinite(options.width) || options.width <= 0)) ||
       (options.height !== undefined && (!Number.isFinite(options.height) || options.height <= 0))
     ) {
-      throw new RendererError("width and height must be finite numbers greater than zero.");
+      return Promise.reject(
+        new RendererError("width and height must be finite numbers greater than zero."),
+      );
     }
 
-    const application = this.#createApplication();
-    await application.init({
-      canvas: options.canvas,
-      autoDensity: true,
-      autoStart: false,
-      ...(options.width === undefined || options.height === undefined
-        ? {}
-        : { width: options.width, height: options.height }),
-      ...(options.backgroundColor === undefined
-        ? {}
-        : { backgroundColor: options.backgroundColor }),
-      ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
-    });
+    this.#lifecycle = "initializing";
+    this.#initPromise = this.#initialize(options);
+    return this.#initPromise;
+  }
 
+  async #initialize(options: RendererInitOptions): Promise<void> {
+    // Creation failure needs the same reset as init failure: the lifecycle
+    // is already "initializing" and #initPromise holds this rejection, so
+    // without the reset later calls would coalesce onto it forever.
+    let application: PixiApplicationLike;
+    try {
+      application = this.#createApplication();
+    } catch (error) {
+      this.#resetAfterFailedInit();
+      throw error;
+    }
+    try {
+      await application.init({
+        canvas: options.canvas,
+        autoDensity: true,
+        autoStart: false,
+        ...(options.width === undefined || options.height === undefined
+          ? {}
+          : { width: options.width, height: options.height }),
+        ...(options.backgroundColor === undefined
+          ? {}
+          : { backgroundColor: options.backgroundColor }),
+        ...(options.resolution === undefined ? {} : { resolution: options.resolution }),
+      });
+    } catch (error) {
+      // Roll back whatever the partial initialization acquired. A cleanup
+      // failure must not mask the original error — both stay observable.
+      try {
+        this.#destroyApplication(application);
+      } catch (cleanupError) {
+        this.#resetAfterFailedInit();
+        throw new AggregateError(
+          [error, cleanupError],
+          "PixiRenderer initialization failed and rollback cleanup failed.",
+        );
+      }
+      this.#resetAfterFailedInit();
+      throw error;
+    }
     this.#application = application;
+    this.#initPromise = null;
+    this.#lifecycle = "initialized";
+  }
+
+  #resetAfterFailedInit(): void {
+    this.#initPromise = null;
+    this.#lifecycle = "new";
   }
 
   /**
@@ -158,13 +252,71 @@ export class PixiRenderer implements Renderer {
     application.render();
   }
 
-  async dispose(): Promise<void> {
-    const application = this.#application;
-    if (application === null) {
-      throw new RendererError("PixiRenderer is not initialized.");
+  /**
+   * Destroy the application and release everything the renderer owns: stage
+   * display objects, but never a texture or texture source (R1 — see the
+   * class ownership note). The caller-provided canvas stays in the DOM.
+   *
+   * Disposing a renderer that is not initialized (never initialized, a
+   * failed initialization, or already disposed) rejects with
+   * {@link RendererError}. When initialization is pending, disposal waits
+   * for it to settle first: a successful initialization is then destroyed,
+   * and a failed one is not a disposal failure because its rollback already
+   * released the partial application. Calls made while such a deferred
+   * disposal is running share its promise.
+   */
+  dispose(): Promise<void> {
+    if (this.#disposePromise !== null) {
+      return this.#disposePromise;
     }
-
+    const pendingInit = this.#initPromise;
+    if (this.#lifecycle === "initializing" && pendingInit !== null) {
+      this.#disposePromise = this.#disposeAfterInit(pendingInit);
+      return this.#disposePromise;
+    }
+    if (this.#lifecycle !== "initialized" || this.#application === null) {
+      return Promise.reject(new RendererError("PixiRenderer is not initialized."));
+    }
+    // Nothing is in flight: destroy synchronously so the historical
+    // fire-and-forget `dispose(); init()` sequence keeps working, and so a
+    // repeated call deterministically rejects on the uninitialized contract.
+    const application = this.#application;
     this.#application = null;
+    this.#lifecycle = "new";
+    try {
+      this.#destroyApplication(application);
+    } catch (error) {
+      return Promise.reject(error);
+    }
+    return Promise.resolve();
+  }
+
+  async #disposeAfterInit(pendingInit: Promise<void>): Promise<void> {
+    try {
+      try {
+        await pendingInit;
+      } catch (error) {
+        // A plain initialization failure is not a disposal failure: its
+        // rollback already released the partial application. A rollback
+        // cleanup failure (AggregateError) may have left partial resources
+        // behind — surface it to the disposal caller instead of hiding it.
+        if (error instanceof AggregateError) {
+          throw error;
+        }
+      }
+      const application = this.#application;
+      this.#application = null;
+      if (application !== null) {
+        this.#destroyApplication(application);
+      }
+    } finally {
+      this.#lifecycle = "new";
+      this.#initPromise = null;
+      this.#disposePromise = null;
+    }
+  }
+
+  #destroyApplication(application: PixiApplicationLike): void {
     // removeView: false keeps the caller-provided canvas in the DOM.
     // children: true destroys the display objects the stage still holds; the
     // renderer owns stage content. The texture and textureSource flags are

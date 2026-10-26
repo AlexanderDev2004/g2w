@@ -71,6 +71,7 @@ describe("dependency direction", () => {
  */
 describe("PixiRenderer disposal and texture ownership (R1)", () => {
   interface FakeApplication extends PixiApplicationLike {
+    initCalls: number;
     destroyRendererOptions: unknown;
     destroyTextureOptions: unknown;
     destroyCalls: number;
@@ -79,8 +80,11 @@ describe("PixiRenderer disposal and texture ownership (R1)", () => {
   function fakeApplication(): { application: FakeApplication; stage: Container } {
     const stage = new Container();
     const application: FakeApplication = {
-      init: async () => {},
+      init: async () => {
+        application.initCalls += 1;
+      },
       render: () => {},
+      initCalls: 0,
       destroyCalls: 0,
       destroyRendererOptions: null,
       destroyTextureOptions: null,
@@ -181,10 +185,13 @@ describe("PixiRenderer disposal and texture ownership (R1)", () => {
     expect(renderer.initialized).toBe(false);
   });
 
-  it("leaves no destroyed application behind when initialization fails", async () => {
+  it("rolls back a failed initialization by destroying the partial application", async () => {
     const { application } = fakeApplication();
     application.init = async () => {
-      throw new Error("no renderer backend");
+      application.initCalls += 1;
+      if (application.initCalls === 1) {
+        throw new Error("no renderer backend");
+      }
     };
     const renderer = new PixiRenderer({ createApplication: () => application });
 
@@ -192,13 +199,20 @@ describe("PixiRenderer disposal and texture ownership (R1)", () => {
       "no renderer backend",
     );
 
-    // Partial initialization is not "initialized": stage, render, and dispose
-    // all keep the uninitialized contract, and nothing is destroyed.
+    // The partially initialized application was rolled back exactly once...
+    expect(application.destroyCalls).toBe(1);
+    // ...partial initialization is not "initialized": stage, render, and
+    // dispose all keep the uninitialized contract...
     expect(renderer.initialized).toBe(false);
     await expect(renderer.dispose()).rejects.toThrow(RendererError);
     expect(() => renderer.stage).toThrow(RendererError);
     expect(() => renderer.render()).toThrow(RendererError);
-    expect(application.destroyCalls).toBe(0);
+    // ...and the renderer can be initialized again after the failure.
+    await renderer.initialize({ canvas: fakeCanvas() });
+    expect(renderer.initialized).toBe(true);
+    expect(application.initCalls).toBe(2);
+    await renderer.dispose();
+    expect(application.destroyCalls).toBe(2);
   });
 
   it("documents the hazard: PixiJS destroy flags with texture options DO destroy stage textures", () => {
@@ -374,5 +388,286 @@ describe("PixiRenderer sizing and resize (R3)", () => {
     expect(application.destroyCalls).toBe(1);
     expect(texture.destroyed).toBe(false);
     expect(texture.source.destroyed).toBe(false);
+  });
+});
+
+/**
+ * E3-B lifecycle regressions: concurrent initialization coalescing,
+ * failure rollback with observable causes, and disposal-during-init.
+ * The gated fake parks `init()` on a deferred promise the test releases,
+ * so every interleaving is deterministic — no timers, no real PixiJS.
+ */
+describe("PixiRenderer lifecycle (E3-B)", () => {
+  interface LifecycleFake extends PixiApplicationLike {
+    initCalls: number;
+    destroyCalls: number;
+  }
+
+  /**
+   * An application whose `init()` parks until `release()` is called.
+   * `initialize()` runs synchronously up to parking the fake, so a test can
+   * call `release()` right after starting initialization without any entry
+   * synchronization.
+   */
+  function gatedApplication(): {
+    application: LifecycleFake;
+    release: (error?: Error) => void;
+  } {
+    let releaser: ((error?: Error) => void) | null = null;
+    const application: LifecycleFake = {
+      initCalls: 0,
+      destroyCalls: 0,
+      init: async () => {
+        application.initCalls += 1;
+        await new Promise<void>((resolve, reject) => {
+          releaser = (error?: Error) => (error === undefined ? resolve() : reject(error));
+        });
+      },
+      render: () => {},
+      destroy: () => {
+        application.destroyCalls += 1;
+      },
+      stage: new Container(),
+      renderer: { resize: () => {} },
+    };
+    return {
+      application,
+      release: (error?: Error) => {
+        const current = releaser;
+        releaser = null;
+        current?.(error);
+      },
+    };
+  }
+
+  it("coalesces concurrent initialize calls into one application", async () => {
+    let created = 0;
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({
+      createApplication: () => {
+        created += 1;
+        return gate.application;
+      },
+    });
+
+    const first = renderer.initialize({ canvas: fakeCanvas() });
+    const second = renderer.initialize({ canvas: fakeCanvas() });
+    expect(second).toBe(first);
+
+    gate.release();
+    await Promise.all([first, second]);
+
+    expect(created).toBe(1);
+    expect(gate.application.initCalls).toBe(1);
+    expect(renderer.initialized).toBe(true);
+
+    // No leak: the single application is destroyed exactly once.
+    await renderer.dispose();
+    expect(gate.application.destroyCalls).toBe(1);
+  });
+
+  it("keeps the uninitialized contract while initialization is pending", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    expect(renderer.initialized).toBe(false);
+    expect(() => renderer.stage).toThrow(RendererError);
+    expect(() => renderer.render()).toThrow(RendererError);
+    expect(() => renderer.resize(320, 240)).toThrow(RendererError);
+
+    gate.release();
+    await pending;
+    expect(renderer.initialized).toBe(true);
+    await renderer.dispose();
+  });
+
+  it("rejects a second initialization after the first completed", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const first = renderer.initialize({ canvas: fakeCanvas() });
+    gate.release();
+    await first;
+
+    await expect(renderer.initialize({ canvas: fakeCanvas() })).rejects.toThrow(
+      "already initialized",
+    );
+
+    await renderer.dispose();
+  });
+
+  it("aggregates a rollback failure with the original initialization error", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+    const initBoom = new Error("init boom");
+    const cleanupBoom = new Error("cleanup boom");
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    // Only the first rollback destroy fails; the later successful
+    // initialization must be disposable again.
+    gate.application.destroy = () => {
+      gate.application.destroyCalls += 1;
+      if (gate.application.destroyCalls === 1) {
+        throw cleanupBoom;
+      }
+    };
+    gate.release(initBoom);
+
+    const settled = await pending.then(
+      () => "fulfilled",
+      (error: unknown) => error,
+    );
+    expect(settled).toBeInstanceOf(AggregateError);
+    expect([...(settled as AggregateError).errors]).toEqual([initBoom, cleanupBoom]);
+
+    // The renderer is back to a state that can be initialized again.
+    expect(renderer.initialized).toBe(false);
+    const retry = renderer.initialize({ canvas: fakeCanvas() });
+    gate.release();
+    await retry;
+    expect(renderer.initialized).toBe(true);
+    await renderer.dispose();
+  });
+
+  it("waits for a pending initialization before disposing", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    const disposal = renderer.dispose();
+    gate.release();
+    await pending;
+    await disposal;
+
+    expect(gate.application.destroyCalls).toBe(1);
+    expect(renderer.initialized).toBe(false);
+  });
+
+  it("settles a deferred disposal when the pending initialization fails", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    const disposal = renderer.dispose();
+    gate.release(new Error("init boom"));
+
+    await expect(pending).rejects.toThrow("init boom");
+    // A failed initialization is not a disposal failure: its rollback
+    // already released the partial application.
+    await expect(disposal).resolves.toBeUndefined();
+    expect(gate.application.destroyCalls).toBe(1);
+    expect(renderer.initialized).toBe(false);
+    await expect(renderer.dispose()).rejects.toThrow(RendererError);
+  });
+
+  it("shares one disposal across concurrent dispose-during-init calls", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    const first = renderer.dispose();
+    const second = renderer.dispose();
+    expect(second).toBe(first);
+
+    gate.release();
+    await Promise.all([pending, first, second]);
+    expect(gate.application.destroyCalls).toBe(1);
+  });
+
+  it("keeps the fire-and-forget dispose(); initialize() sequence working", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const first = renderer.initialize({ canvas: fakeCanvas() });
+    gate.release();
+    await first;
+    // No await between dispose and initialize — destroy happens
+    // synchronously, so this historical sequence keeps working.
+    const disposal = renderer.dispose();
+    const reinit = renderer.initialize({ canvas: fakeCanvas() });
+    gate.release();
+    await disposal;
+    await reinit;
+
+    expect(gate.application.initCalls).toBe(2);
+    expect(gate.application.destroyCalls).toBe(1);
+    expect(renderer.initialized).toBe(true);
+  });
+
+  it("rejects an initialize that arrives after a deferred disposal started", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    const disposal = renderer.dispose();
+
+    // The disposal must win: joining the pending init would resolve this
+    // promise even though the disposal is about to destroy the application.
+    await expect(renderer.initialize({ canvas: fakeCanvas() })).rejects.toThrow(
+      "PixiRenderer is disposing",
+    );
+
+    gate.release();
+    await pending;
+    await disposal;
+    expect(gate.application.destroyCalls).toBe(1);
+    expect(renderer.initialized).toBe(false);
+  });
+
+  it("resets the lifecycle and stays retryable when application creation fails", async () => {
+    let createCalls = 0;
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({
+      createApplication: () => {
+        createCalls += 1;
+        if (createCalls === 1) {
+          throw new Error("no canvas");
+        }
+        return gate.application;
+      },
+    });
+
+    await expect(renderer.initialize({ canvas: fakeCanvas() })).rejects.toThrow("no canvas");
+    expect(renderer.initialized).toBe(false);
+
+    // The rejected first init must not poison later calls via coalescing.
+    const retry = renderer.initialize({ canvas: fakeCanvas() });
+    gate.release();
+    await retry;
+    expect(renderer.initialized).toBe(true);
+    await renderer.dispose();
+    expect(gate.application.destroyCalls).toBe(1);
+  });
+
+  it("surfaces a rollback cleanup failure to the deferred disposal caller", async () => {
+    const gate = gatedApplication();
+    const renderer = new PixiRenderer({ createApplication: () => gate.application });
+
+    const pending = renderer.initialize({ canvas: fakeCanvas() });
+    // Rollback destroy fails, so the init promise settles with an
+    // AggregateError instead of a plain error.
+    gate.application.destroy = () => {
+      gate.application.destroyCalls += 1;
+      throw new Error("cleanup boom");
+    };
+    gate.release(new Error("init boom"));
+
+    const disposal = renderer.dispose();
+    const settled = await pending.then(
+      () => "fulfilled",
+      (error: unknown) => error,
+    );
+    expect(settled).toBeInstanceOf(AggregateError);
+
+    // The disposal must not swallow the cleanup failure...
+    const disposalOutcome = await disposal.then(
+      () => "fulfilled",
+      (error: unknown) => error,
+    );
+    expect(disposalOutcome).toBe(settled);
+    // ...but the renderer still resets so it can be initialized again.
+    expect(renderer.initialized).toBe(false);
+    await expect(renderer.dispose()).rejects.toThrow(RendererError);
   });
 });

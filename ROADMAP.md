@@ -40,6 +40,8 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 - **R2 — Game objects** `Done` `P1`: `GameObject` + `GameObjectCollection` in core — a claimed, snapshot-iterated update/destroy registry that runs through the existing game loop, with explicit ownership, terminal idempotent destroy, and no second loop.
 - **DevTools MVP — read-only runtime overlay** `Done` `P2`: `@g2w/devtools` — an opt-in, dev-only DOM overlay observing scenes (via a new `SceneManager.keys` accessor), game objects and transforms (via a new `GameObjectCollection.objects()` snapshot accessor), explicitly watched input keys/buttons, FPS/frame time, and a bounded runtime log; snapshot-polling only, never mutating or disposing the runtime, and excluded from production builds.
 
+- **E3 — Adapter lifecycle hardening** `Done` `P0`: E3-A audit (#6), E3-B PixiRenderer lifecycle (#7, PR #9), and E3-C DOM/Gamepad attachment lifecycle (#8, PR #10). Initialization/attachment rollback, concurrent/repeated lifecycle calls, terminal disposal, listener cleanup, and shared-texture ownership are covered by regression tests. Adapters stay imperative and depend on core only; Effect ownership remains at the higher-level runtime boundary.
+
 ## Near-term (current focus)
 
 ### R1 — Reconcile renderer-disposal texture semantics

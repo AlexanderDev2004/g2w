@@ -19,6 +19,7 @@ export { GameObjectCollection } from "./game-object.js";
 export type { GamepadSnapshot } from "./gamepad.js";
 export { GamepadState } from "./gamepad.js";
 export { InputState } from "./input.js";
+export { createRequestAnimationFrameScheduler } from "./raf-frame-scheduler.js";
 export type { Renderer, RendererCapabilities, RendererInitOptions } from "./renderer.js";
 export { RendererError } from "./renderer-error.js";
 export type { Scene } from "./scene.js";

@@ -1,6 +1,6 @@
 # RFC 0001: Effect-native runtime and resource lifecycle
 
-- **Status:** Proposed for review (E0 audit complete; no runtime implementation changed)
+- **Status:** Architecture decisions recorded; E1 foundation implementation in progress (RFC review remains open)
 - **Target baseline:** `main` at R5 commit `85c72f281234b107c83110ffaccd0629ea1b55a0`
 - **Scope:** Architecture and staged migration plan for making Effect a required dependency of the official G2W framework packages.
 - **Non-goal:** This RFC does not implement Effect integration, change existing runtime behavior, or claim browser-hardware validation.
@@ -26,7 +26,7 @@ Current repository facts that affect this migration:
 
 ## 2. Decision
 
-**Effect is a required runtime dependency for G2W's official framework runtime, not an optional integration.** The migration will be incremental and Effect-native for lifecycle, service composition, typed failure, and scoped resource management.
+**Effect is a required runtime dependency for the official G2W runtime and official runtime integrations, not an optional integration.** The migration will be incremental and Effect-native for lifecycle, service composition, typed failure, and scoped resource management. The low-level `@g2w/core` package remains dependency-free and exports synchronous contracts/state models; consumers opt into the official Effect-based runtime package for framework lifecycle orchestration. This preserves the useful core boundary while making Effect mandatory for the recommended full G2W runtime.
 
 The framework remains:
 - TypeScript-first and browser-game focused;
@@ -37,15 +37,15 @@ The framework remains:
 
 ### 2.1 Core boundary clarification
 
-The old invariant “core has zero runtime dependencies” is no longer compatible with the mandatory-Effect decision if Effect is imported by core. Replace it with the more precise invariants:
+The decision is to **keep `@g2w/core` free of runtime dependencies** and place Effect in a new `@g2w/runtime` package. Effect is still mandatory for the official, recommended full framework runtime; `@g2w/core` is the intentionally low-level package of synchronous contracts and state machines, not a competing full runtime.
 
-- Core remains free of browser DOM, PixiJS, Web Audio, and framework/UI imports.
-- Effect is the one deliberate runtime foundation dependency allowed in core.
-- Core must not import concrete browser or renderer adapters.
+- `@g2w/core` stays free of browser DOM, PixiJS, Web Audio, Effect, and UI imports.
+- `@g2w/runtime` depends on `@g2w/core` and Effect, and owns bootstrap, runtime services, lifecycle orchestration, and scopes.
+- Official adapters continue to depend on core contracts. They may expose Effect-based acquisition/composition through runtime-facing integration points without making core depend on adapters.
 - Runtime bundle impact must be measured and documented.
-- If a truly dependency-free primitive package is still useful, consider extracting it only after the migration, based on measured use cases; do not create speculative package fragmentation during E1.
+- Do not add more packages beyond `@g2w/runtime` unless implementation evidence requires them.
 
-This is an intentional architecture change, not a claim that Effect has no cost.
+This resolves the dependency-boundary conflict without weakening the decision that Effect is required for the official runtime.
 
 ## 3. Design principles
 
@@ -111,7 +111,7 @@ Resource boundary: scopes/finalizers own acquired resources and adapter teardown
 Dependency direction: adapters depend on core contracts; core never imports adapters
 ```
 
-This is a logical architecture, not a commitment to create a new `@g2w/runtime` package immediately. E0 should not add packages just to mirror diagram boxes. E1 must decide whether the runtime/bootstrap belongs in `@g2w/core` or a new `@g2w/runtime` package after checking public API ergonomics and dependency graph consequences.
+The decision is to create `@g2w/runtime` as the Effect-based orchestration/bootstrap package. It depends on `@g2w/core`; core never depends on runtime or concrete adapters. Avoid creating additional packages merely to mirror diagram boxes.
 
 ## 5. Migration stages and acceptance criteria
 
@@ -120,9 +120,17 @@ This is a logical architecture, not a commitment to create a new `@g2w/runtime` 
 - [x] Inspect current package map, key lifecycle/resource APIs, compiler configuration, and documented boundaries on R5 baseline.
 - [x] Record the conflict between mandatory Effect and the existing zero-runtime-dependency core invariant.
 - [x] Define frame-loop, resource ownership, error, and public API compatibility principles.
-- [ ] Review this RFC and approve the package placement/API strategy before implementation.
+- [x] Record the package placement and public API strategy decisions below; implementation review remains open.
 
 ### E1 — Effect foundation
+
+**Decisions for E1:**
+
+1. **Package placement:** create `@g2w/runtime`; keep `@g2w/core` dependency-free. The full official runtime requires Effect.
+2. **Public API:** provide an ergonomic G2W facade for common bootstrap/lifecycle operations. Advanced users may access Effect types/programs through explicit runtime exports; do not force Effect combinators into ordinary game code.
+3. **Runtime ownership:** the official bootstrap owns a managed Effect runtime/scope and exposes explicit startup/shutdown. Advanced applications may compose services/layers through supported exports, but must not be required to manage low-level internals for a basic game.
+4. **Compatibility:** preserve existing core synchronous models and promise/manual-dispose APIs during E1. E1 adds foundations only; lifecycle behavior changes belong in E2 with migration examples and regression tests.
+5. **Performance:** measure the example's production bundle and synchronous frame-dispatch baseline before integrating runtime work. E1 must not allocate a runtime or create an Effect per frame.
 
 Deliver:
 - Pin a compatible Effect version through the workspace package manager and lockfile; avoid unbounded versions.

@@ -8,6 +8,7 @@
       "@g2w/core": ["packages/core/src/index.ts"],
       "@g2w/input-dom": ["packages/input-dom/src/index.ts"],
       "@g2w/renderer-pixi": ["packages/renderer-pixi/src/index.ts"],
+      "@g2w/audio-web": ["packages/audio-web/src/index.ts"],
       "@g2w/devtools": ["packages/devtools/src/index.ts"]
     }
   },

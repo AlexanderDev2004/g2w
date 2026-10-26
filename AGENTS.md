@@ -4,7 +4,7 @@ Guidance for AI coding agents (Amp and others) working in this repository.
 
 ## Project
 
-**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **R5 — gamepad & touch input**: monorepo, renderer contract, `Game` lifecycle and frame loop, renderer-agnostic `SceneManager`, DOM-free `InputState` (keyboard, pointer, multi-touch) with the `@g2w/input-dom` browser adapter, DOM-free `GamepadState` with the `@g2w/input-gamepad` Gamepad API adapter, a generic `AssetManager` in core with the `@g2w/renderer-pixi` texture loader, the `Transform2D`/`Sprite2D` model in core with the adapter's `createSpriteView`, the minimal `GameObject`/`GameObjectCollection` layer in core, the `@g2w/devtools` read-only overlay, a renderer-agnostic `AudioManager` in core with the `@g2w/audio-web` Web Audio backend, PixiJS adapter, a Vite browser demo, tests, CI, and docs.
+**g2w (Game to Website)** is a TypeScript-first, AI-agent-ready framework for building and shipping web games. 2D first with PixiJS; 3D via a future Three.js adapter. The repository is at **R5 — gamepad & touch input, plus the E1 Effect runtime foundation**: monorepo, renderer contract, `Game` lifecycle and frame loop, renderer-agnostic `SceneManager`, DOM-free `InputState` (keyboard, pointer, multi-touch) with the `@g2w/input-dom` browser adapter, DOM-free `GamepadState` with the `@g2w/input-gamepad` Gamepad API adapter, a generic `AssetManager` in core with the `@g2w/renderer-pixi` texture loader, the `Transform2D`/`Sprite2D` model in core with the adapter's `createSpriteView`, the minimal `GameObject`/`GameObjectCollection` layer in core, the `@g2w/devtools` read-only overlay, a renderer-agnostic `AudioManager` in core with the `@g2w/audio-web` Web Audio backend, the Effect-based `@g2w/runtime` bootstrap foundation (E1 — nothing migrated), PixiJS adapter, a Vite browser demo, tests, CI, and docs.
 
 ## Architecture boundaries
 
@@ -14,8 +14,9 @@ Guidance for AI coding agents (Amp and others) working in this repository.
 - `@g2w/input-gamepad` (packages/input-gamepad) samples gamepads onto the core `GamepadState` through the Gamepad API with an injectable polling source; the host drives sampling with `poll()`. It may depend on `@g2w/core` only; all Gamepad API and browser event handling lives here, never in core.
 - `@g2w/audio-web` (packages/audio-web) implements the core audio backend contract on top of the Web Audio API: it decodes sound files, starts playbacks, and owns the `AudioContext` lifecycle. It may depend on `@g2w/core` only; all browser audio handling lives here, never in core.
 - `@g2w/devtools` (packages/devtools) renders a read-only runtime overlay on top of core state. It may depend on `@g2w/core` only; it observes through immutable snapshots and never mutates or disposes the runtime.
+- `@g2w/runtime` (packages/runtime) is the Effect-based bootstrap foundation (E1): one managed Effect runtime, explicit idempotent shutdown, best-effort finalizer cleanup with observable failures. It may depend on `@g2w/core` and `effect` (exact-pinned); `@g2w/core` must never depend on Effect or import it. Nothing in E1 migrates core lifecycle classes, and no Effect runtime may be allocated per frame.
 - `examples/hello-world` consumes only the public exports of the workspace packages through Vite; it must not bypass g2w by creating a PixiJS `Application` directly.
-- Tests in `packages/core/test/architecture.test.ts`, `packages/core/test/game.test.ts`, `packages/core/test/scene-manager.test.ts`, `packages/core/test/input.test.ts`, `packages/core/test/gamepad.test.ts`, `packages/core/test/asset-manager.test.ts`, `packages/core/test/game-object.test.ts`, `packages/core/test/audio-manager.test.ts`, `packages/input-dom/test/`, `packages/input-gamepad/test/`, `packages/renderer-pixi/test/`, `packages/audio-web/test/`, and `packages/devtools/test/` enforce these boundaries — keep them passing and extend them when adding packages.
+- Tests in `packages/core/test/architecture.test.ts`, `packages/core/test/game.test.ts`, `packages/core/test/scene-manager.test.ts`, `packages/core/test/input.test.ts`, `packages/core/test/gamepad.test.ts`, `packages/core/test/asset-manager.test.ts`, `packages/core/test/game-object.test.ts`, `packages/core/test/audio-manager.test.ts`, `packages/input-dom/test/`, `packages/input-gamepad/test/`, `packages/renderer-pixi/test/`, `packages/audio-web/test/`, `packages/devtools/test/`, and `packages/runtime/test/` enforce these boundaries — keep them passing and extend them when adding packages.
 
 ## Commands
 
@@ -47,13 +48,14 @@ Validate with `pnpm check`, `pnpm typecheck`, `pnpm build`, `pnpm verify:exports
 - Audio tests must stay deterministic: inject backends, fake `Sound`/`SoundPlayback` objects, and fake `AudioContext`/`fetch` into `AudioManager`/`WebAudioBackend`, never real timers, audio devices, or a browser.
 - Game-object tests must stay deterministic: drive collections directly with plain objects and injected transforms, never real timers or a browser.
 - DevTools tests must stay deterministic: drive the overlay with an injected fake DOM document and an injected scheduler, never real timers or a browser.
+- Runtime tests must stay deterministic: drive the Effect facade with real bootstrap/shutdown calls (pure microtask async, no timers) and plain finalizer callbacks, never real schedulers or a browser.
 - No new dependencies without a clear need. `@g2w/core` stays dependency-free.
 - Do not enable `skipLibCheck: false`-style weakening or suppress type errors; fix the underlying issue.
 - Biome owns formatting (2-space indent, 100-char lines) — run `pnpm format` rather than hand-formatting.
 
 ## Scope discipline
 
-- Do not expand beyond the current MVP scope without explicit approval. Out of scope as of R5: key/button remapping, action mapping or rebinding, haptics/vibration, input recording, scene stacks, transition effects, scene persistence, ECS components or scene graphs, audio mixers/spatial audio/adaptive music/streaming, sprite batching helpers, texture atlases, manifest-based bulk loading, physics, animations, cameras, integrations (React/Vue/Next.js/Effect), multiplayer, MCP servers, 3D runtime, npm publishing, release automation.
+- Do not expand beyond the current MVP scope without explicit approval. Out of scope as of E1 (Effect runtime foundation): migrating `Game`, `SceneManager`, `AssetManager`, or any input/renderer/audio adapter onto the Effect runtime, key/button remapping, action mapping or rebinding, haptics/vibration, input recording, scene stacks, transition effects, scene persistence, ECS components or scene graphs, audio mixers/spatial audio/adaptive music/streaming, sprite batching helpers, texture atlases, manifest-based bulk loading, physics, animations, cameras, integrations (React/Vue/Next.js), multiplayer, MCP servers, 3D runtime, npm publishing, release automation.
 - Document planned-but-unimplemented features as roadmap items in the README or docs, never as stubs or placeholder code.
 
 ## Definition of done

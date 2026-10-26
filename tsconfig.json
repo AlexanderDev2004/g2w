@@ -6,6 +6,7 @@
     { "path": "packages/input-gamepad" },
     { "path": "packages/renderer-pixi" },
     { "path": "packages/audio-web" },
-    { "path": "packages/devtools" }
+    { "path": "packages/devtools" },
+    { "path": "packages/runtime" }
   ]
 }

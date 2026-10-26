@@ -10,7 +10,8 @@
       "@g2w/input-gamepad": ["packages/input-gamepad/src/index.ts"],
       "@g2w/renderer-pixi": ["packages/renderer-pixi/src/index.ts"],
       "@g2w/audio-web": ["packages/audio-web/src/index.ts"],
-      "@g2w/devtools": ["packages/devtools/src/index.ts"]
+      "@g2w/devtools": ["packages/devtools/src/index.ts"],
+      "@g2w/runtime": ["packages/runtime/src/index.ts"]
     }
   },
   "include": ["packages/*/src/**/*.ts", "packages/*/test/**/*.ts", "examples/*/src/**/*.ts"]

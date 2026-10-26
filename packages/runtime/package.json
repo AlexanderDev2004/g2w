@@ -1,0 +1,28 @@
+{
+  "name": "@g2w/runtime",
+  "version": "0.1.0",
+  "description": "Effect-based runtime and bootstrap foundation for g2w: a managed lifecycle scope with explicit, idempotent shutdown.",
+  "type": "module",
+  "license": "MIT",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "dependencies": {
+    "@g2w/core": "workspace:*",
+    "effect": "4.0.6"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -310,6 +310,61 @@ try {
   }
 }
 
+// Exercise the runtime pipeline through the real entry points: bootstrap a
+// managed Effect runtime from a layer with an acquired resource (no browser),
+// run a program, register a finalizer, shut down once, and verify shutdown
+// idempotence plus the run-after-shutdown guard.
+const runtimePackage = await import(await entryFile("packages/runtime"));
+if (
+  typeof runtimePackage.createG2WRuntime !== "function" ||
+  typeof runtimePackage.RuntimeBootstrapError !== "function" ||
+  typeof runtimePackage.RuntimeCleanupFailure !== "function" ||
+  typeof runtimePackage.RuntimeShutdownError !== "function"
+) {
+  throw new Error("@g2w/runtime does not export createG2WRuntime or its typed errors.");
+}
+// Effect is a dependency of @g2w/runtime only; under pnpm's strict layout it
+// resolves from the runtime package's own node_modules, not the repo root.
+const { Effect, Layer } = await import(
+  pathToFileURL(
+    path.join(root, "packages", "runtime", "node_modules", "effect", "dist", "index.js"),
+  ).href
+);
+let runtimeLayerReleased = false;
+const runtimeLayer = Layer.effectDiscard(
+  Effect.acquireRelease(Effect.void, () =>
+    Effect.sync(() => {
+      runtimeLayerReleased = true;
+    }),
+  ),
+);
+const runtime = await runtimePackage.createG2WRuntime({ layer: runtimeLayer });
+let runtimeFinalizerRan = false;
+runtime.addFinalizer(() => {
+  runtimeFinalizerRan = true;
+});
+const runtimeValue = await runtime.run(Effect.succeed(7));
+if (runtimeValue !== 7) {
+  throw new Error("@g2w/runtime: run() did not execute the program.");
+}
+await runtime.shutdown();
+if (!runtimeFinalizerRan || !runtimeLayerReleased || runtime.disposed !== true) {
+  throw new Error("@g2w/runtime: shutdown() did not run finalizers and layer disposal.");
+}
+await runtime.shutdown(); // idempotent: cleanup must not run twice
+if (!runtimeFinalizerRan || !runtimeLayerReleased) {
+  throw new Error("@g2w/runtime: repeated shutdown executed cleanup again.");
+}
+let runtimeGuardThrew = false;
+try {
+  runtime.run(Effect.succeed(1));
+} catch (error) {
+  runtimeGuardThrew = error instanceof runtimePackage.RuntimeShutdownError;
+}
+if (!runtimeGuardThrew) {
+  throw new Error("@g2w/runtime: run() after shutdown should throw RuntimeShutdownError.");
+}
+
 // Exercise the DevTools pipeline through the real entry points, using the
 // same fake DOM approach as the unit tests: build the overlay, feed it a
 // collection snapshot, and dispose it â€” proving the package's public surface
@@ -416,5 +471,5 @@ await pixi.dispose().then(
 );
 
 console.log(
-  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/input-gamepad, @g2w/renderer-pixi, @g2w/audio-web, @g2w/devtools (incl. asset + sprite + game-object + audio + gamepad + devtools API)",
+  "Package exports verified: @g2w/core, @g2w/input-dom, @g2w/input-gamepad, @g2w/renderer-pixi, @g2w/audio-web, @g2w/devtools, @g2w/runtime (incl. asset + sprite + game-object + audio + gamepad + devtools + runtime API)",
 );

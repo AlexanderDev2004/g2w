@@ -22,6 +22,82 @@ docs/architecture.md              Architecture decisions and direction
 
 For the full picture, read [docs/architecture.md](docs/architecture.md).
 
+## Target Architecture
+
+The diagram below shows the **intended target architecture** — where g2w is going, not a claim that every planned capability exists. Solid edges and current package names reflect what is implemented and tested today; dashed edges mark planned or unverified capabilities. See [ROADMAP.md](ROADMAP.md) for statuses and [docs/architecture.md](docs/architecture.md) for the implemented design.
+
+```mermaid
+flowchart TB
+    APP["Game Application<br/>Game Logic · Scenes · UI"]
+
+    subgraph g2w["g2w framework"]
+        RUNTIME["@g2w/runtime<br/>Effect-based Application Lifecycle (G2WGame)"]
+        CORE["@g2w/core<br/>Engine Contracts · Game Model · Scene APIs<br/>zero runtime dependencies"]
+        INPUT["Input Adapters<br/>@g2w/input-dom (DOM · touch) · @g2w/input-gamepad"]
+        AUDIO["@g2w/audio-web<br/>Web Audio Backend"]
+        DEVTOOLS["@g2w/devtools<br/>Read-only Dev Overlay (dev-only)"]
+        PIXI["@g2w/renderer-pixi<br/>2D Rendering"]
+        THREE["@g2w/renderer-three<br/>Planned 3D Rendering"]
+    end
+
+    WEBGL["WebGL<br/>(PixiJS 8 backend)"]
+    CANVAS["Canvas Backend<br/>Unverified"]
+    DOMAPI["DOM · Pointer Events"]
+    PADAPI["Gamepad API"]
+    WEBAUDIO["Web Audio API"]
+
+    APP -->|"compose and run"| RUNTIME
+    APP --> CORE
+    APP --> INPUT
+    APP --> AUDIO
+    APP -.->|"development builds only"| DEVTOOLS
+    RUNTIME --> CORE
+    INPUT --> CORE
+    AUDIO --> CORE
+    DEVTOOLS --> CORE
+    PIXI --> CORE
+    THREE -.->|"future adapter (R8)"| CORE
+    PIXI --> WEBGL
+    PIXI -.->|"verify support"| CANVAS
+    INPUT --> DOMAPI
+    INPUT --> PADAPI
+    AUDIO --> WEBAUDIO
+```
+
+### Layer responsibilities
+
+| Layer / package          | Responsibility                                                                                                                                                                                       | Current status                                                                                                |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| `@g2w/core`              | Renderer-agnostic engine foundation: renderer contract, `Game` runtime, `SceneManager`, DOM-free `InputState`/`GamepadState`, `AssetManager`, `Transform2D`/`Sprite2D`, game objects, `AudioManager` | Done — zero runtime dependencies, enforced by architecture tests                                              |
+| `@g2w/runtime`           | Effect-based application orchestration: one managed Effect runtime, `G2WGame` lifecycle with LIFO finalizers, idempotent shutdown with observable cleanup failures                                   | Done (E1 + E2) — Effect only here, never in core or adapters                                                  |
+| `@g2w/renderer-pixi`     | Implements the renderer contract on PixiJS 8: async `Application` lifecycle, logical sizing, sprite views, texture loading                                                                           | Done — 2D rendering through WebGL                                                                             |
+| `@g2w/input-dom`         | Adapts DOM keyboard, pointer, and touch (Pointer Events) onto `InputState`                                                                                                                           | Done                                                                                                          |
+| `@g2w/input-gamepad`     | Samples the Gamepad API into `GamepadState` through caller-driven `poll()`                                                                                                                           | Done                                                                                                          |
+| `@g2w/audio-web`         | Web Audio backend for the core `AudioManager`: decode, playback, `AudioContext` ownership, autoplay `resume()`                                                                                       | Done                                                                                                          |
+| `@g2w/devtools`          | Read-only development overlay observing core state through immutable snapshots                                                                                                                       | Done — opt-in, dev-only, absent from production builds                                                        |
+| Asset management         | Generic `AssetManager` in core; non-destructive PixiJS texture loader in the renderer adapter                                                                                                        | Done                                                                                                          |
+| `@g2w/renderer-three`    | 3D rendering adapter proving the renderer contract generalizes                                                                                                                                       | Exploratory ([ROADMAP.md](ROADMAP.md) R8) — no package exists yet                                             |
+| Canvas rendering backend | 2D rendering without WebGL                                                                                                                                                                           | Unverified — PixiJS 8 dropped its canvas renderer; documented here as a direction to verify, not a capability |
+
+### Architecture principles
+
+- **Dependency direction.** Everything above the core depends on `@g2w/core`; core depends on nothing at runtime. Applications compose the packages directly — the Effect runtime orchestrates the lifecycle, but adapters are plain imperative packages a host wires up and registers for cleanup.
+- **Renderer independence.** Game code targets the renderer contract in core, never PixiJS. A future Three.js adapter would provide 3D the same way, without Three.js reaching the core.
+- **Effect ownership.** Effect is the application-runtime technology, confined to `@g2w/runtime`: it owns lifecycle, resource acquisition/release, initialization failure, and shutdown. No Effect execution or fiber per frame — the frame loop stays synchronous on one injected scheduler, with no runtime, effect, or promise allocated per frame.
+- **Adapter boundaries.** Browser APIs (DOM events, Pointer Events, Gamepad API, Web Audio) live only in adapter packages; core stays DOM-free and renderer-free, keeping the engine portable and independently testable.
+- **Explicit ownership.** Every resource (display objects, listeners, contexts, playbacks) has a documented owner and a safe disposal path; shared resources like textures are never destroyed by framework disposal.
+
+### Current vs. planned capabilities
+
+| Capability                                | Status                                                                                                      |
+| ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
+| Effect as the primary application runtime | Done for the game lifecycle (`G2WGame`); core `Game` still ships alongside it and the demo uses core `Game` |
+| 2D rendering                              | Done — PixiJS 8 over WebGL                                                                                  |
+| Canvas (non-WebGL) rendering              | Unverified target                                                                                           |
+| 3D rendering                              | Exploratory — Three.js adapter (R8)                                                                         |
+| Touch input                               | Done — multi-touch through the Pointer Events stream                                                        |
+| Desktop and mobile web browsers           | Target platform; verified today on desktop browsers via the demo's smoke runs                               |
+
 ## Prerequisites
 
 - Node.js 22 or newer

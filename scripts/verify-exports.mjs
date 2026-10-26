@@ -60,6 +60,12 @@ if (typeof core.Transform2D !== "function") {
 if (typeof core.Sprite2D !== "function") {
   throw new Error("@g2w/core does not export Sprite2D.");
 }
+if (typeof core.Anchor2D !== "function") {
+  throw new Error("@g2w/core does not export Anchor2D.");
+}
+if (typeof core.SpriteError !== "function") {
+  throw new Error("@g2w/core does not export SpriteError.");
+}
 if (typeof core.GameObjectCollection !== "function") {
   throw new Error("@g2w/core does not export GameObjectCollection.");
 }
@@ -109,10 +115,18 @@ if (spriteStage.children.length !== 1) {
   throw new Error("@g2w/renderer-pixi: createSpriteView did not attach one display object.");
 }
 model.transform.x = 30;
+model.anchor.set(0.5, 0.5);
+model.zIndex = 4;
 view.sync();
 const spriteDisplay = spriteStage.children[0];
 if (spriteDisplay.x !== 30 || spriteDisplay.y !== 20) {
   throw new Error("@g2w/renderer-pixi: sync did not apply the model transform.");
+}
+if (spriteDisplay.anchor.x !== 0.5 || spriteDisplay.anchor.y !== 0.5) {
+  throw new Error("@g2w/renderer-pixi: sync did not apply the model anchor.");
+}
+if (spriteDisplay.zIndex !== 4) {
+  throw new Error("@g2w/renderer-pixi: sync did not apply the model z-order.");
 }
 view.dispose();
 if (!view.disposed || spriteStage.children.length !== 0) {

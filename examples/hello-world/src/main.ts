@@ -122,10 +122,16 @@ try {
   // a core Sprite2D model plus a renderer-created view. Game logic mutates
   // the model and calls view.sync(); it never touches PixiJS objects. The
   // view owns its display object only — the shared texture is never
-  // destroyed by view disposal.
+  // destroyed by view disposal. The center anchor (R11) makes the position
+  // the logo's center point, so the gameplay rotation spins the logo around
+  // its own middle instead of swinging its top-left corner.
   const logoModel = new Sprite2D({
     texture: logo,
-    transform: new Transform2D({ x: 16, y: VIEW_HEIGHT - logo.height - 16 }),
+    transform: new Transform2D({
+      x: 16 + logo.width / 2,
+      y: VIEW_HEIGHT - logo.height / 2 - 16,
+    }),
+    anchor: { x: 0.5, y: 0.5 },
   });
   const logoView = createSpriteView({ sprite: logoModel, renderer });
 
@@ -146,6 +152,8 @@ try {
         scaleX: 0.2,
         scaleY: 0.2,
       }),
+      // Center anchor: each spark spins around its own middle as it orbits.
+      anchor: { x: 0.5, y: 0.5 },
     });
     const view = createSpriteView({ sprite: model, renderer });
     sparkModels.push(model);

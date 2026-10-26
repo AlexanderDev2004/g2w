@@ -80,10 +80,15 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
 
 ### R11 — Sprite anchors, pivots, and z-ordering
 
-**Status:** Planned · **Priority:** P2
+**Status:** Done · **Priority:** P2
 - **Objective:** remove the top-left-pivot limitation and give scenes deterministic layering.
 - **Dependencies:** R2.
-- **Acceptance criteria:** anchor/pivot in the core model, applied by `sync()`; z-order defined and tested; demo updated.
+- **Resolution (implemented and tested):** `Sprite2D` gains a normalized **`anchor`** (`Anchor2D`: `0` edge, `0.5` center, `1` opposite edge; default `(0, 0)` preserves the original top-left placement) and a **`zIndex`** (default `0`). The anchor is a sprite property, not a `Transform2D` property — transforms are shared between sprites and game objects, and a game object has no visual. `x`/`y` are read-only; `set(x, y)` is the only mutation path and rejects non-finite or out-of-range values with the new `SpriteError` instead of clamping (a rejected call is a no-op). `zIndex` is a plain mutable number: higher values render in front, equal values keep their current order (PixiJS's sort is stable), and the PixiJS adapter applies it through the same `view.sync()` call — mapping into PixiJS's identical normalized `Sprite.anchor` space with no offset math. The view attaches the display object before applying the model because PixiJS only marks a parent's sort dirty when a `zIndex` changes on an attached child. The demo now center-anchors the logo and sparks, so gameplay rotation visibly spins them around their own middles.
+- **Evidence:** 16 new deterministic tests — `Anchor2D` defaults/init/`set`/rejection (negative, > 1, NaN, ±Infinity, constructor and setter paths, no-op on rejection, inclusive edges), `Sprite2D` anchor/zIndex defaults and init, per-sprite anchor ownership, anchor independence from a shared transform, plain `zIndex` mutability; adapter tests with real PixiJS sprites: default anchor leaves top-left placement, center/feet anchors applied at creation and through `set()`+`sync()`, real `Container` sorting reorders by `zIndex` and never reshuffles equal values, z-order changes don't disturb anchor/transform state, texture-safety regressions unchanged. `scripts/verify-exports.mjs` now asserts `Anchor2D`/`SpriteError` exports and that the sprite pipeline applies anchor and z-order. Full suite: 253 tests across 15 files.
+- **Acceptance criteria:**
+  1. [x] Anchor/pivot in the core model, applied by `sync()`.
+  2. [x] Z-order defined and tested (higher `zIndex` in front; equal values stable).
+  3. [x] Demo updated (center-anchored logo and sparks).
 
 ## Medium-term
 

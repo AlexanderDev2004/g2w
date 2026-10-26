@@ -31,8 +31,9 @@ export interface SpriteViewInit<TTexture> {
  * to the renderer's stage. The view is a pure projection of the model: call
  * `sync()` (explicitly, once per frame after the model changes — typically at
  * the end of the scene update) to apply position, rotation (radians),
- * scale, visibility, and alpha. No ticker, subscription, or second loop
- * exists; the existing Game loop is the only driver.
+ * scale, visibility, alpha, the normalized anchor, and the z-order. No
+ * ticker, subscription, or second loop exists; the existing Game loop is the
+ * only driver.
  *
  * Ownership:
  * - The **model** is owned by the caller (typically the game/scene code).
@@ -54,8 +55,12 @@ export class SpriteView<TTexture> {
     // PixiJS Sprite.destroy() does not destroy the texture by default, which
     // matches the framework's texture-ownership policy.
     this.#displayObject = new Sprite(sprite2d.texture as Texture);
-    this.#applyModel();
+    // Attach first, then apply the model: PixiJS only marks a parent's sort
+    // dirty (and enables sortableChildren) when a zIndex changes on a child
+    // that already has a parent, so the model's initial zIndex must be
+    // applied after attachment to take effect.
     stage.addChild(this.#displayObject);
+    this.#applyModel();
   }
 
   /** Whether the view has been disposed (terminal). */
@@ -65,8 +70,8 @@ export class SpriteView<TTexture> {
 
   /**
    * Apply the current model state (position, rotation, scale, visibility,
-   * alpha) to the display object. Throws {@link SpriteViewError} after
-   * disposal.
+   * alpha, anchor, z-order) to the display object. Throws
+   * {@link SpriteViewError} after disposal.
    */
   sync(): void {
     if (this.#disposed) {
@@ -90,12 +95,22 @@ export class SpriteView<TTexture> {
   }
 
   #applyModel(): void {
-    const { transform, visible, alpha } = this.#sprite2d;
+    const { transform, visible, alpha, anchor, zIndex } = this.#sprite2d;
     this.#displayObject.position.set(transform.x, transform.y);
     this.#displayObject.rotation = transform.rotation;
     this.#displayObject.scale.set(transform.scaleX, transform.scaleY);
     this.#displayObject.visible = visible;
     this.#displayObject.alpha = alpha;
+    // PixiJS's Sprite.anchor uses the same normalized 0..1 space as the core
+    // Anchor2D, so the mapping is direct: no offset math, no double
+    // application, and the default (0, 0) preserves the top-left placement.
+    // The anchor is a property of the sprite model, not of the (possibly
+    // shared) Transform2D.
+    this.#displayObject.anchor.set(anchor.x, anchor.y);
+    // Assigning an unchanged zIndex is a no-op in PixiJS, so the stage only
+    // becomes sortable when a z-order actually changes; children with equal
+    // zIndex keep their attachment order (stable sort).
+    this.#displayObject.zIndex = zIndex;
   }
 }
 

@@ -14,5 +14,6 @@ export type { Scene } from "./scene.js";
 export { SceneError } from "./scene-error.js";
 export type { SceneManagerOptions } from "./scene-manager.js";
 export { SceneManager } from "./scene-manager.js";
-export type { Sprite2DInit, Transform2DInit } from "./sprite.js";
-export { Sprite2D, Transform2D } from "./sprite.js";
+export type { Anchor2DInit, Sprite2DInit, Transform2DInit } from "./sprite.js";
+export { Anchor2D, Sprite2D, Transform2D } from "./sprite.js";
+export { SpriteError } from "./sprite-error.js";

@@ -58,8 +58,17 @@ interface ListenerRegistration {
  *
  * Listener policy:
  * - `attach()` is idempotent; repeated calls never duplicate listeners.
+ *   A registration that fails part-way through is rolled back completely —
+ *   every listener added during that call is removed and the adapter stays
+ *   detached and retryable. If a rollback removal itself fails, that
+ *   listener is retained for disposal so `dispose()` can retry the removal;
+ *   the original registration error is rethrown, aggregated with the
+ *   cleanup failures.
  * - `dispose()` removes every listener this adapter registered and is
- *   idempotent. A disposed adapter cannot be attached again.
+ *   idempotent. A disposed adapter cannot be attached again; every
+ *   successfully removed listener stops delivering events, so the
+ *   `InputState` sees nothing after disposal unless a removal itself
+ *   failed.
  * - The adapter never calls `preventDefault()`; page scrolling and other
  *   default behavior stay under the application's control.
  *
@@ -91,6 +100,12 @@ export class DomInput {
    * Subscribe to all DOM events this adapter handles. Idempotent: calling it
    * again while attached is a no-op. Throws {@link DomInputError} after
    * disposal.
+   *
+   * Failure-safe: if a listener registration fails part-way through, every
+   * listener already registered during this call is removed before the
+   * original error is rethrown, leaving the adapter detached and retryable.
+   * A rollback failure is aggregated with the registration error
+   * (`AggregateError`) instead of masking it.
    */
   attach(): void {
     if (this.#disposed) {
@@ -99,23 +114,63 @@ export class DomInput {
     if (this.#attached) {
       return;
     }
-    this.#attached = true;
 
+    // Register into a local list first and commit only on full success, so
+    // a partial failure never leaves the adapter half-attached.
+    const registrations: ListenerRegistration[] = [];
+    try {
+      this.#attachListeners(registrations);
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      const failedRemovals: ListenerRegistration[] = [];
+      for (const { target, type, listener } of registrations) {
+        try {
+          target.removeEventListener(type, listener);
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+          failedRemovals.push({ target, type, listener });
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        // A failed removal means the listener may still be attached, and
+        // its registration never entered #registrations. Retain it so a
+        // later dispose() retries the removal (removing an already-removed
+        // DOM listener is a no-op); without this the listener would be
+        // unreachable — still mutating the state — for the adapter's life.
+        this.#registrations.push(...failedRemovals);
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "DomInput attach failed and listener rollback failed.",
+        );
+      }
+      throw error;
+    }
+    this.#registrations.push(...registrations);
+    this.#attached = true;
+  }
+
+  #attachListeners(registrations: ListenerRegistration[]): void {
     const canvas = this.#options.canvas;
     const keyTarget = this.#options.keyTarget ?? window;
     const blurTarget = this.#options.blurTarget ?? window;
     const pointerUpTarget = this.#options.pointerUpTarget ?? window;
 
-    this.#register(keyTarget, "keydown", (event) => {
+    const register = (target: EventTarget, type: string, handler: (event: Event) => void): void => {
+      const listener: EventListener = (event) => handler(event);
+      target.addEventListener(type, listener);
+      registrations.push({ target, type, listener });
+    };
+
+    register(keyTarget, "keydown", (event) => {
       this.#state.handleKeyDown((event as KeyboardEvent).code);
     });
-    this.#register(keyTarget, "keyup", (event) => {
+    register(keyTarget, "keyup", (event) => {
       this.#state.handleKeyUp((event as KeyboardEvent).code);
     });
-    this.#register(blurTarget, "blur", () => {
+    register(blurTarget, "blur", () => {
       this.#state.handleFocusLoss();
     });
-    this.#register(canvas, "pointermove", (event) => {
+    register(canvas, "pointermove", (event) => {
       const pointerEvent = event as PointerEvent;
       const [x, y] = this.#toCanvasCoordinates(pointerEvent.clientX, pointerEvent.clientY);
       this.#state.handlePointerMove(x, y);
@@ -123,7 +178,7 @@ export class DomInput {
         this.#state.handleTouchMove(pointerEvent.pointerId, x, y);
       }
     });
-    this.#register(canvas, "pointerdown", (event) => {
+    register(canvas, "pointerdown", (event) => {
       const pointerEvent = event as PointerEvent;
       const [x, y] = this.#toCanvasCoordinates(pointerEvent.clientX, pointerEvent.clientY);
       this.#state.handlePointerMove(x, y);
@@ -132,7 +187,7 @@ export class DomInput {
         this.#state.handleTouchStart(pointerEvent.pointerId, x, y);
       }
     });
-    this.#register(pointerUpTarget, "pointerup", (event) => {
+    register(pointerUpTarget, "pointerup", (event) => {
       const pointerEvent = event as PointerEvent;
       this.#state.handleButtonUp(pointerEvent.button);
       if (pointerEvent.pointerType === "touch") {
@@ -144,7 +199,7 @@ export class DomInput {
     // release the button state and cancel the touch contact so nothing
     // stays held. `preventDefault` stays untouched — scrolling behavior is
     // the page's choice, not this adapter's.
-    this.#register(pointerUpTarget, "pointercancel", (event) => {
+    register(pointerUpTarget, "pointercancel", (event) => {
       const pointerEvent = event as PointerEvent;
       if (pointerEvent.pointerType === "touch") {
         this.#state.handleTouchCancel(pointerEvent.pointerId);
@@ -152,7 +207,7 @@ export class DomInput {
         this.#state.handlePointerLeave();
       }
     });
-    this.#register(canvas, "pointerleave", () => {
+    register(canvas, "pointerleave", () => {
       this.#state.handlePointerLeave();
     });
   }
@@ -160,6 +215,12 @@ export class DomInput {
   /**
    * Remove every listener this adapter registered. Idempotent and terminal:
    * later calls are no-ops and the adapter cannot be attached again.
+   *
+   * Every removal is attempted even if one fails; failures are collected
+   * into an `AggregateError` instead of silently abandoning the remaining
+   * listeners. Listeners whose attach-time rollback removal failed are
+   * retained and retried here — re-removing an already-removed listener is
+   * a no-op. The adapter stays disposed regardless.
    */
   dispose(): void {
     if (this.#disposed) {
@@ -167,21 +228,23 @@ export class DomInput {
     }
     this.#disposed = true;
     this.#attached = false;
+    const cleanupErrors: unknown[] = [];
     for (const { target, type, listener } of this.#registrations) {
-      target.removeEventListener(type, listener);
+      try {
+        target.removeEventListener(type, listener);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
     }
     this.#registrations.length = 0;
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(cleanupErrors, "DomInput dispose failed to remove some listeners.");
+    }
   }
 
   /** Whether the adapter is currently attached to its event targets. */
   get attached(): boolean {
     return this.#attached;
-  }
-
-  #register(target: EventTarget, type: string, handler: (event: Event) => void): void {
-    const listener: EventListener = (event) => handler(event);
-    this.#registrations.push({ target, type, listener });
-    target.addEventListener(type, listener);
   }
 
   #toCanvasCoordinates(clientX: number, clientY: number): [x: number, y: number] {

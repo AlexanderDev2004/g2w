@@ -87,9 +87,18 @@ function defaultSource(): readonly (PolledGamepad | null)[] {
  *
  * Lifecycle policy:
  * - `attach()` is idempotent; repeated calls never duplicate listeners.
+ *   A registration that fails part-way through is rolled back completely —
+ *   every listener added during that call is removed and the adapter stays
+ *   detached and retryable. If a rollback removal itself fails, that
+ *   listener is retained for disposal so `dispose()` can retry the removal;
+ *   the original registration error is rethrown, aggregated with the
+ *   cleanup failures.
  *   `attach()` registers the connection events; it does not poll.
  * - `dispose()` removes every listener this adapter registered, is
- *   idempotent, and is terminal — a disposed adapter cannot attach again.
+ *   idempotent, and is terminal — a disposed adapter cannot attach again
+ *   and `poll()` rejects further sampling; every successfully removed
+ *   listener stops delivering events, so the state sees nothing after
+ *   disposal unless a removal itself failed.
  *   Disposal does not clear the state; the state is owned by the caller.
  *
  * Ownership: the caller owns the `GamepadState`, this adapter, and any
@@ -116,6 +125,12 @@ export class GamepadInput {
    * exclusively from `poll()`. Default event targets resolve to `window`
    * here rather than in the constructor, so constructing the adapter never
    * requires a browser environment.
+   *
+   * Failure-safe: if a listener registration fails part-way through, every
+   * listener already registered during this call is removed before the
+   * original error is rethrown, leaving the adapter detached and retryable.
+   * A rollback failure is aggregated with the registration error
+   * (`AggregateError`) instead of masking it.
    */
   attach(): void {
     if (this.#disposed) {
@@ -124,18 +139,59 @@ export class GamepadInput {
     if (this.#attached) {
       return;
     }
-    this.#attached = true;
 
+    // Register into a local list first and commit only on full success, so
+    // a partial failure never leaves the adapter half-attached.
+    const registrations: ListenerRegistration[] = [];
+    try {
+      this.#attachListeners(registrations);
+    } catch (error) {
+      const cleanupErrors: unknown[] = [];
+      const failedRemovals: ListenerRegistration[] = [];
+      for (const { target, type, listener } of registrations) {
+        try {
+          target.removeEventListener(type, listener);
+        } catch (cleanupError) {
+          cleanupErrors.push(cleanupError);
+          failedRemovals.push({ target, type, listener });
+        }
+      }
+      if (cleanupErrors.length > 0) {
+        // A failed removal means the listener may still be attached, and
+        // its registration never entered #registrations. Retain it so a
+        // later dispose() retries the removal (removing an already-removed
+        // listener from an EventTarget is a no-op); without this the
+        // listener would be unreachable — still mutating the state — for
+        // the adapter's life.
+        this.#registrations.push(...failedRemovals);
+        throw new AggregateError(
+          [error, ...cleanupErrors],
+          "GamepadInput attach failed and listener rollback failed.",
+        );
+      }
+      throw error;
+    }
+    this.#registrations.push(...registrations);
+    this.#attached = true;
+  }
+
+  #attachListeners(registrations: ListenerRegistration[]): void {
     const connectTarget = this.#options.connectTarget ?? window;
     const disconnectTarget = this.#options.disconnectTarget ?? window;
 
-    this.#register(connectTarget, "gamepadconnected", (event) => {
+    const register = (target: EventTarget, type: string, handler: (event: Event) => void): void => {
+      const listener: EventListener = (event) => handler(event);
+      target.addEventListener(type, listener);
+      registrations.push({ target, type, listener });
+    };
+
+    register(connectTarget, "gamepadconnected", (event) => {
       const index = (event as GamepadEvent).gamepad?.index;
       if (typeof index === "number") {
         this.#state.handleConnected(index);
       }
     });
-    this.#register(disconnectTarget, "gamepaddisconnected", (event) => {
+    register(disconnectTarget, "gamepaddisconnected", (event) => {
       const index = (event as GamepadEvent).gamepad?.index;
       if (typeof index === "number") {
         this.#state.handleDisconnected(index);
@@ -147,9 +203,14 @@ export class GamepadInput {
    * Sample every controller once and feed the results into the state.
    * Present controllers are sampled; connected indices absent from the
    * source's result are treated as disconnected. Throws if the source
-   * throws (see the sampling policy).
+   * throws (see the sampling policy) or after disposal — sampling stays
+   * caller-driven and can never mutate the state once the adapter is
+   * disposed.
    */
   poll(): void {
+    if (this.#disposed) {
+      throw new GamepadInputError("Cannot poll a disposed GamepadInput.");
+    }
     const source = this.#options.source ?? defaultSource;
     const gamepads = source();
     const present = new Set<number>();
@@ -173,6 +234,14 @@ export class GamepadInput {
   /**
    * Remove every listener this adapter registered. Idempotent and terminal:
    * later calls are no-ops and the adapter cannot attach again.
+   *
+   * Every removal is attempted even if one fails; failures are collected
+   * into an `AggregateError` instead of silently abandoning the remaining
+   * listeners. Listeners whose attach-time rollback removal failed are
+   * retained and retried here — re-removing an already-removed listener is
+   * a no-op. The adapter stays disposed regardless.
+   *
+   * Disposal does not clear the state; the state is owned by the caller.
    */
   dispose(): void {
     if (this.#disposed) {
@@ -180,20 +249,25 @@ export class GamepadInput {
     }
     this.#disposed = true;
     this.#attached = false;
+    const cleanupErrors: unknown[] = [];
     for (const { target, type, listener } of this.#registrations) {
-      target.removeEventListener(type, listener);
+      try {
+        target.removeEventListener(type, listener);
+      } catch (cleanupError) {
+        cleanupErrors.push(cleanupError);
+      }
     }
     this.#registrations.length = 0;
+    if (cleanupErrors.length > 0) {
+      throw new AggregateError(
+        cleanupErrors,
+        "GamepadInput dispose failed to remove some listeners.",
+      );
+    }
   }
 
   /** Whether the adapter is currently attached to its event targets. */
   get attached(): boolean {
     return this.#attached;
-  }
-
-  #register(target: EventTarget, type: string, handler: (event: Event) => void): void {
-    const listener: EventListener = (event) => handler(event);
-    this.#registrations.push({ target, type, listener });
-    target.addEventListener(type, listener);
   }
 }

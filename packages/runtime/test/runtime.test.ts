@@ -108,6 +108,47 @@ describe("@g2w/runtime shutdown", () => {
     expect(count).toBe(1);
   });
 
+  it("shares the original shutdown when a finalizer reenters shutdown()", async () => {
+    const runtime = await createG2WRuntime();
+    let count = 0;
+    let nested: Promise<void> | undefined;
+    runtime.addFinalizer(() => {
+      count++;
+      nested = runtime.shutdown();
+    });
+
+    await runtime.shutdown();
+
+    // The reentrant call joined the in-flight shutdown instead of starting a
+    // second cleanup pass.
+    expect(count).toBe(1);
+    await expect(nested).resolves.toBeUndefined();
+    expect(runtime.disposed).toBe(true);
+  });
+
+  it("rejects reentrant run() and addFinalizer() during shutdown", async () => {
+    const runtime = await createG2WRuntime();
+    let runRejected = false;
+    let addRejected = false;
+    runtime.addFinalizer(() => {
+      try {
+        runtime.run(Effect.succeed(1));
+      } catch (error) {
+        runRejected = error instanceof RuntimeShutdownError;
+      }
+      try {
+        runtime.addFinalizer(() => {});
+      } catch (error) {
+        addRejected = error instanceof RuntimeShutdownError;
+      }
+    });
+
+    await settle(runtime.shutdown());
+
+    expect(runRejected).toBe(true);
+    expect(addRejected).toBe(true);
+  });
+
   it("attempts every finalizer and keeps cleanup failures observable", async () => {
     const runtime = await createG2WRuntime();
     const calls: string[] = [];

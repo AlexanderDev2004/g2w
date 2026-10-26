@@ -88,10 +88,11 @@ const bootstrapFromLayer = async <R, E>(
 
   const finalizers: G2WFinalizer[] = [];
   let shutdownPromise: Promise<void> | undefined;
+  let shutdownStarted = false;
 
   return {
     run: <A, E>(effect: Effect.Effect<A, E, R>) => {
-      if (shutdownPromise !== undefined) {
+      if (shutdownStarted) {
         throw new RuntimeShutdownError({
           message: "Cannot run a program after the G2W runtime has shut down.",
           failures: [],
@@ -100,7 +101,7 @@ const bootstrapFromLayer = async <R, E>(
       return managed.runPromise(effect);
     },
     addFinalizer: (finalizer) => {
-      if (shutdownPromise !== undefined) {
+      if (shutdownStarted) {
         throw new RuntimeShutdownError({
           message: "Cannot register a finalizer after the G2W runtime has shut down.",
           failures: [],
@@ -109,10 +110,18 @@ const bootstrapFromLayer = async <R, E>(
       finalizers.push(finalizer);
     },
     get disposed(): boolean {
-      return shutdownPromise !== undefined;
+      return shutdownStarted;
     },
     shutdown: () => {
-      shutdownPromise ??= runShutdown(managed, finalizers);
+      if (shutdownPromise === undefined) {
+        // Mark shutdown as started and publish the promise synchronously
+        // before any cleanup runs, so a finalizer that reenters shutdown()
+        // shares this shutdown instead of starting a second cleanup pass,
+        // and reentrant run()/addFinalizer() calls are rejected. Cleanup
+        // itself starts on the next microtask.
+        shutdownStarted = true;
+        shutdownPromise = Promise.resolve().then(() => runShutdown(managed, finalizers));
+      }
       return shutdownPromise;
     },
   };

@@ -238,3 +238,212 @@ describe("GamepadInput connection events", () => {
     expect(state.isConnected(0)).toBe(false);
   });
 });
+
+/**
+ * E3-C attachment failure safety: partial listener registration failure
+ * rolls back completely, cleanup failures never mask the registration
+ * error, and sampling cannot mutate the state after disposal.
+ */
+describe("GamepadInput attachment failure safety (E3-C)", () => {
+  /** A fake target that throws on demand for registration or removal. */
+  function failingTarget() {
+    const target = fakeTarget();
+    let failAddType: string | null = null;
+    let failRemoveType: string | null = null;
+    const originalAdd = target.addEventListener.bind(target);
+    const originalRemove = target.removeEventListener.bind(target);
+    target.addEventListener = ((type: string, listener: EventListener) => {
+      if (failAddType === type) {
+        throw new Error(`addEventListener failed for ${type}`);
+      }
+      originalAdd(type, listener);
+    }) as typeof target.addEventListener;
+    target.removeEventListener = ((type: string, listener: EventListener) => {
+      if (failRemoveType === type) {
+        throw new Error(`removeEventListener failed for ${type}`);
+      }
+      originalRemove(type, listener);
+    }) as typeof target.removeEventListener;
+    return {
+      target,
+      failRegistrationOn: (type: string | null) => {
+        failAddType = type;
+      },
+      failRemovalOn: (type: string | null) => {
+        failRemoveType = type;
+      },
+    };
+  }
+
+  it("rolls back every listener when registration fails part-way and stays retryable", () => {
+    const state = new GamepadState();
+    const connect = failingTarget();
+    const disconnect = failingTarget();
+    // gamepadconnected registers fine on the connect target;
+    // gamepaddisconnected (second registration) throws on the disconnect target.
+    disconnect.failRegistrationOn("gamepaddisconnected");
+    const input = new GamepadInput(state, {
+      source: () => [],
+      connectTarget: connect.target,
+      disconnectTarget: disconnect.target,
+    });
+
+    expect(() => input.attach()).toThrow("addEventListener failed for gamepaddisconnected");
+    expect(input.attached).toBe(false);
+
+    // The rolled-back connect listener feeds nothing.
+    emitGamepadEvent(connect.target, "gamepadconnected", 3);
+    expect(state.isConnected(3)).toBe(false);
+
+    // Retry fully succeeds once the failure is gone.
+    disconnect.failRegistrationOn(null);
+    input.attach();
+    expect(input.attached).toBe(true);
+    emitGamepadEvent(connect.target, "gamepadconnected", 3);
+    expect(state.isConnected(3)).toBe(true);
+    emitGamepadEvent(disconnect.target, "gamepaddisconnected", 3);
+    expect(state.isConnected(3)).toBe(false);
+
+    input.dispose();
+  });
+
+  it("preserves the registration error alongside rollback cleanup failures", () => {
+    const state = new GamepadState();
+    const connect = failingTarget();
+    const disconnect = failingTarget();
+    // gamepadconnected registers fine on the connect target;
+    // gamepaddisconnected throws on the disconnect target, and the already
+    // registered connect listener fails to roll back.
+    disconnect.failRegistrationOn("gamepaddisconnected");
+    connect.failRemovalOn("gamepadconnected");
+    const input = new GamepadInput(state, {
+      source: () => [],
+      connectTarget: connect.target,
+      disconnectTarget: disconnect.target,
+    });
+
+    let caught: unknown;
+    try {
+      input.attach();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AggregateError);
+    const aggregate = caught as AggregateError;
+    expect(aggregate.errors).toHaveLength(2);
+    expect((aggregate.errors[0] as Error).message).toBe(
+      "addEventListener failed for gamepaddisconnected",
+    );
+    expect((aggregate.errors[1] as Error).message).toBe(
+      "removeEventListener failed for gamepadconnected",
+    );
+    expect(input.attached).toBe(false);
+  });
+
+  it("reports cleanup failures from dispose while staying terminal", () => {
+    const state = new GamepadState();
+    const connect = failingTarget();
+    const input = new GamepadInput(state, {
+      source: () => [],
+      connectTarget: connect.target,
+      disconnectTarget: new EventTarget(),
+    });
+    input.attach();
+
+    connect.failRemovalOn("gamepadconnected");
+    expect(() => input.dispose()).toThrow(AggregateError);
+    expect(() => input.dispose()).not.toThrow();
+    expect(() => input.attach()).toThrow(GamepadInputError);
+    expect(input.attached).toBe(false);
+  });
+
+  it("rejects poll after disposal and leaves the state untouched", () => {
+    const state = new GamepadState();
+    const input = new GamepadInput(state, {
+      source: () => [fakeGamepad(0, [true])],
+      connectTarget: new EventTarget(),
+      disconnectTarget: new EventTarget(),
+    });
+    input.attach();
+    input.dispose();
+
+    // Sampling stays caller-driven; after disposal it cannot mutate the
+    // caller-owned state at all.
+    expect(() => input.poll()).toThrow(GamepadInputError);
+    expect(state.isConnected(0)).toBe(false);
+    expect(state.connectedIndices()).toEqual([]);
+
+    // The caller-owned state remains directly usable.
+    state.handleSample(0, { pressed: [true], axes: [] });
+    expect(state.isConnected(0)).toBe(true);
+    expect(state.isButtonDown(0, 0)).toBe(true);
+  });
+
+  it("retains listeners whose rollback failed so dispose can retry the removal", () => {
+    const state = new GamepadState();
+    const connect = failingTarget();
+    const disconnect = failingTarget();
+    disconnect.failRegistrationOn("gamepaddisconnected");
+    // gamepadconnected registered fine, then the disconnect registration
+    // threw; the connect rollback removal also throws, so the listener
+    // would be stranded without retention.
+    connect.failRemovalOn("gamepadconnected");
+    const input = new GamepadInput(state, {
+      source: () => [],
+      connectTarget: connect.target,
+      disconnectTarget: disconnect.target,
+    });
+
+    expect(() => input.attach()).toThrow(AggregateError);
+    expect(input.attached).toBe(false);
+
+    // Documented window: the stranded listener is still live until the
+    // retry in dispose() succeeds.
+    emitGamepadEvent(connect.target, "gamepadconnected", 4);
+    expect(state.isConnected(4)).toBe(true);
+
+    // dispose() retries the failed removal and wins, leaving no live
+    // listener behind.
+    connect.failRemovalOn(null);
+    expect(() => input.dispose()).not.toThrow();
+    expect(connect.target.removed.filter((r) => r.type === "gamepadconnected")).toHaveLength(1);
+    emitGamepadEvent(connect.target, "gamepadconnected", 5);
+    expect(state.isConnected(5)).toBe(false);
+  });
+
+  it("leaves no stale tracking when the first registration fails", () => {
+    const state = new GamepadState();
+    const connect = failingTarget();
+    const disconnect = failingTarget();
+    connect.failRegistrationOn("gamepadconnected");
+    const input = new GamepadInput(state, {
+      source: () => [],
+      connectTarget: connect.target,
+      disconnectTarget: disconnect.target,
+    });
+
+    let caught: unknown;
+    try {
+      input.attach();
+    } catch (error) {
+      caught = error;
+    }
+    // Nothing was registered, so this is the plain registration error —
+    // not an aggregate — with no listener tracked on either target.
+    expect(caught).not.toBeInstanceOf(AggregateError);
+    expect((caught as Error).message).toBe("addEventListener failed for gamepadconnected");
+    expect(connect.target.added).toHaveLength(0);
+    expect(connect.target.removed).toHaveLength(0);
+    expect(disconnect.target.added).toHaveLength(0);
+
+    // Retry registers every listener exactly once.
+    connect.failRegistrationOn(null);
+    input.attach();
+    expect(input.attached).toBe(true);
+    expect(connect.target.added.filter((r) => r.type === "gamepadconnected")).toHaveLength(1);
+    emitGamepadEvent(connect.target, "gamepadconnected", 6);
+    expect(state.isConnected(6)).toBe(true);
+    input.dispose();
+  });
+});

@@ -478,3 +478,230 @@ describe("DomInput touch normalization (R5)", () => {
     expect(input.getTouchPosition(7)).toEqual({ x: 640, y: 360 });
   });
 });
+
+/**
+ * E3-C attachment failure safety: a listener registration that fails
+ * part-way through must leave no listeners behind, a consistent detached
+ * state, and a retryable adapter — with the original error preserved
+ * alongside any rollback cleanup failure.
+ */
+describe("DomInput attachment failure safety (E3-C)", () => {
+  /** A FakeTarget whose `addEventListener` throws when a given type arrives. */
+  class FailingTarget extends FakeTarget {
+    #failOnType: string | null = null;
+    #failOnRemove: string | null = null;
+
+    failRegistrationOn(type: string): void {
+      this.#failOnType = type;
+    }
+
+    failRemovalOn(type: string): void {
+      this.#failOnRemove = type;
+    }
+
+    override addEventListener(type: string, listener: EventListener): void {
+      if (this.#failOnType === type) {
+        throw new Error(`addEventListener failed for ${type}`);
+      }
+      super.addEventListener(type, listener);
+    }
+
+    override removeEventListener(type: string, listener: EventListener): void {
+      if (this.#failOnRemove === type) {
+        throw new Error(`removeEventListener failed for ${type}`);
+      }
+      super.removeEventListener(type, listener);
+    }
+  }
+
+  function createAdapters(): {
+    input: InputState;
+    keyTarget: FailingTarget;
+    blurTarget: FailingTarget;
+    pointerUpTarget: FailingTarget;
+    canvas: FakeCanvasElement;
+  } {
+    const input = new InputState();
+    const keyTarget = new FailingTarget();
+    const blurTarget = new FailingTarget();
+    const pointerUpTarget = new FailingTarget();
+    const canvas = createFakeCanvas();
+    return { input, keyTarget, blurTarget, pointerUpTarget, canvas };
+  }
+
+  function createInput(input: InputState, targets: ReturnType<typeof createAdapters>): DomInput {
+    return new DomInput(input, {
+      canvas: targets.canvas as unknown as HTMLCanvasElement,
+      keyTarget: targets.keyTarget,
+      blurTarget: targets.blurTarget,
+      pointerUpTarget: targets.pointerUpTarget,
+    });
+  }
+
+  it("rolls back every listener when registration fails part-way and stays retryable", () => {
+    const targets = createAdapters();
+    const { input, keyTarget, canvas } = targets;
+    // keydown registers fine; keyup (the second registration) throws.
+    keyTarget.failRegistrationOn("keyup");
+    const domInput = createInput(input, targets);
+
+    expect(() => domInput.attach()).toThrow("addEventListener failed for keyup");
+
+    // Consistent detached state, not a half-attached adapter.
+    expect(domInput.attached).toBe(false);
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyW" }));
+    expect(input.isKeyDown("KeyW")).toBe(false);
+
+    // Retry fully succeeds once the failure is gone.
+    keyTarget.failRegistrationOn("");
+    domInput.attach();
+    expect(domInput.attached).toBe(true);
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyW" }));
+    expect(input.isKeyDown("KeyW")).toBe(true);
+    keyTarget.dispatchEvent(new FakeDomEvent("keyup", { code: "KeyW" }));
+    expect(input.isKeyDown("KeyW")).toBe(false);
+    canvas.dispatchEvent(new FakeDomEvent("pointerdown", { button: 0 }));
+    expect(input.isButtonDown(0)).toBe(true);
+
+    domInput.dispose();
+  });
+
+  it("preserves the registration error alongside rollback cleanup failures", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    keyTarget.failRegistrationOn("keyup");
+    // keydown's listener (registered before keyup) fails to roll back.
+    keyTarget.failRemovalOn("keydown");
+    const domInput = createInput(input, targets);
+
+    let caught: unknown;
+    try {
+      domInput.attach();
+    } catch (error) {
+      caught = error;
+    }
+
+    expect(caught).toBeInstanceOf(AggregateError);
+    const aggregate = caught as AggregateError;
+    expect(aggregate.errors).toHaveLength(2);
+    expect((aggregate.errors[0] as Error).message).toBe("addEventListener failed for keyup");
+    expect((aggregate.errors[1] as Error).message).toBe("removeEventListener failed for keydown");
+    expect(domInput.attached).toBe(false);
+  });
+
+  it("reports cleanup failures from dispose while staying terminal", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    const domInput = createInput(input, targets);
+    domInput.attach();
+
+    keyTarget.failRemovalOn("keydown");
+    expect(() => domInput.dispose()).toThrow(AggregateError);
+    // Terminal regardless: repeated dispose is a no-op and attach is rejected.
+    expect(() => domInput.dispose()).not.toThrow();
+    expect(() => domInput.attach()).toThrow(DomInputError);
+    expect(domInput.attached).toBe(false);
+  });
+
+  it("leaves the caller-owned state fully usable after adapter disposal", () => {
+    const targets = createAdapters();
+    const { input, keyTarget, canvas } = targets;
+    const domInput = createInput(input, targets);
+    domInput.attach();
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyA" }));
+    domInput.dispose();
+
+    // The adapter owned only its listeners; the state stays usable.
+    input.handleKeyDown("KeyB");
+    expect(input.isKeyDown("KeyB")).toBe(true);
+    expect(input.wasKeyPressed("KeyB")).toBe(true);
+    input.endFrame();
+    expect(input.wasKeyPressed("KeyB")).toBe(false);
+    // And the disposed adapter's targets feed nothing.
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyC" }));
+    canvas.dispatchEvent(new FakeDomEvent("pointerdown", { button: 0 }));
+    expect(input.isKeyDown("KeyC")).toBe(false);
+    expect(input.isButtonDown(0)).toBe(false);
+  });
+
+  it("retains listeners whose rollback failed so dispose can retry the removal", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    keyTarget.failRegistrationOn("keyup");
+    // keydown registered fine, then keyup threw; the keydown rollback
+    // removal also throws, so the listener would be stranded without
+    // retention.
+    keyTarget.failRemovalOn("keydown");
+    const domInput = createInput(input, targets);
+
+    expect(() => domInput.attach()).toThrow(AggregateError);
+    expect(domInput.attached).toBe(false);
+
+    // Documented window: the stranded listener is still live until the
+    // retry in dispose() succeeds.
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyQ" }));
+    expect(input.isKeyDown("KeyQ")).toBe(true);
+
+    // dispose() retries the failed removal and wins, leaving no live
+    // listener behind (KeyQ above was pressed while it was still live).
+    keyTarget.failRemovalOn("");
+    expect(() => domInput.dispose()).not.toThrow();
+    expect(keyTarget.removalCounts.get("keydown")).toBe(1);
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyR" }));
+    expect(input.isKeyDown("KeyR")).toBe(false);
+  });
+
+  it("leaves no stale tracking when the first registration fails", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    keyTarget.failRegistrationOn("keydown");
+    const domInput = createInput(input, targets);
+
+    let caught: unknown;
+    try {
+      domInput.attach();
+    } catch (error) {
+      caught = error;
+    }
+    // Nothing was registered, so this is the plain registration error —
+    // not an aggregate — and there is nothing tracked or to roll back.
+    expect(caught).not.toBeInstanceOf(AggregateError);
+    expect((caught as Error).message).toBe("addEventListener failed for keydown");
+    expect(keyTarget.registrationCounts.size).toBe(0);
+    expect(keyTarget.removalCounts.size).toBe(0);
+
+    // Retry registers every listener exactly once.
+    keyTarget.failRegistrationOn("");
+    domInput.attach();
+    expect(domInput.attached).toBe(true);
+    expect(keyTarget.registrationCounts.get("keydown")).toBe(1);
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyD" }));
+    expect(input.isKeyDown("KeyD")).toBe(true);
+    domInput.dispose();
+    expect(keyTarget.removalCounts.get("keydown")).toBe(1);
+  });
+
+  it("collects multiple removal failures from dispose into one aggregate", () => {
+    const targets = createAdapters();
+    const { input, keyTarget, blurTarget } = targets;
+    const domInput = createInput(input, targets);
+    domInput.attach();
+
+    keyTarget.failRemovalOn("keydown");
+    blurTarget.failRemovalOn("blur");
+    let caught: unknown;
+    try {
+      domInput.dispose();
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(AggregateError);
+    const aggregate = caught as AggregateError;
+    expect(aggregate.errors).toHaveLength(2);
+    expect((aggregate.errors[0] as Error).message).toBe("removeEventListener failed for keydown");
+    expect((aggregate.errors[1] as Error).message).toBe("removeEventListener failed for blur");
+    // Terminal regardless, and every remaining removal was still attempted.
+    expect(() => domInput.dispose()).not.toThrow();
+    expect(() => domInput.attach()).toThrow(DomInputError);
+  });
+});

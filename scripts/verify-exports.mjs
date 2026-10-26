@@ -365,6 +365,60 @@ if (!runtimeGuardThrew) {
   throw new Error("@g2w/runtime: run() after shutdown should throw RuntimeShutdownError.");
 }
 
+// Exercise the E2 game lifecycle through the real entry points: initialize
+// the renderer through the managed runtime, dispatch one frame on an
+// injected scheduler, then dispose — proving renderer ownership is released
+// exactly once (no browser needed; the Effect hop is pure microtask async).
+if (typeof runtimePackage.G2WGame !== "function") {
+  throw new Error("@g2w/runtime does not export G2WGame.");
+}
+const gameEvents = [];
+const gameRenderer = {
+  capabilities: { id: "fake", displayName: "Fake" },
+  initialized: false,
+  initialize: async () => {
+    gameEvents.push("init");
+    gameRenderer.initialized = true;
+  },
+  dispose: async () => {
+    gameEvents.push("dispose");
+    gameRenderer.initialized = false;
+  },
+  render: () => {
+    gameEvents.push("render");
+  },
+};
+const gameFrames = [];
+const gameScheduler = {
+  requestFrame: (callback) => {
+    gameFrames.push(callback);
+  },
+  cancelFrame: () => {
+    gameFrames.length = 0;
+  },
+};
+const game = new runtimePackage.G2WGame({
+  renderer: gameRenderer,
+  canvas: {},
+  scheduler: gameScheduler,
+});
+await game.init();
+if (game.state !== "initialized" || gameEvents.join(",") !== "init") {
+  throw new Error("@g2w/runtime: G2WGame.init() did not initialize the renderer.");
+}
+game.start();
+if (gameFrames.length !== 1) {
+  throw new Error("@g2w/runtime: G2WGame.start() did not schedule exactly one frame.");
+}
+gameFrames[0](16);
+if (gameEvents.join(",") !== "init,render") {
+  throw new Error("@g2w/runtime: G2WGame frame did not dispatch a synchronous render.");
+}
+await game.dispose();
+if (game.state !== "disposed" || gameEvents.join(",") !== "init,render,dispose") {
+  throw new Error("@g2w/runtime: G2WGame.dispose() did not release the renderer once.");
+}
+
 // Exercise the DevTools pipeline through the real entry points, using the
 // same fake DOM approach as the unit tests: build the overlay, feed it a
 // collection snapshot, and dispose it â€” proving the package's public surface

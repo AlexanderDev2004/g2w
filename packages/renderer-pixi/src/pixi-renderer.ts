@@ -131,13 +131,17 @@ export class PixiRenderer implements Renderer {
    * running — await `dispose()` before initializing again.
    */
   initialize(options: RendererInitOptions): Promise<void> {
-    if (this.#lifecycle === "initializing" && this.#initPromise !== null) {
-      return this.#initPromise;
-    }
+    // Checked before the coalescing guard: if a deferred disposal has
+    // started while initialization is pending, joining the pending init
+    // would hand the caller a promise that resolves even though the
+    // disposal is about to destroy the application.
     if (this.#disposePromise !== null) {
       return Promise.reject(
         new RendererError("PixiRenderer is disposing; await dispose() before initializing again."),
       );
+    }
+    if (this.#lifecycle === "initializing" && this.#initPromise !== null) {
+      return this.#initPromise;
     }
     if (this.#lifecycle === "initialized") {
       return Promise.reject(
@@ -169,7 +173,16 @@ export class PixiRenderer implements Renderer {
   }
 
   async #initialize(options: RendererInitOptions): Promise<void> {
-    const application = this.#createApplication();
+    // Creation failure needs the same reset as init failure: the lifecycle
+    // is already "initializing" and #initPromise holds this rejection, so
+    // without the reset later calls would coalesce onto it forever.
+    let application: PixiApplicationLike;
+    try {
+      application = this.#createApplication();
+    } catch (error) {
+      this.#resetAfterFailedInit();
+      throw error;
+    }
     try {
       await application.init({
         canvas: options.canvas,
@@ -280,9 +293,17 @@ export class PixiRenderer implements Renderer {
 
   async #disposeAfterInit(pendingInit: Promise<void>): Promise<void> {
     try {
-      // Initialization failure is not a disposal failure: its rollback has
-      // already released the partial application.
-      await pendingInit.catch(() => {});
+      try {
+        await pendingInit;
+      } catch (error) {
+        // A plain initialization failure is not a disposal failure: its
+        // rollback already released the partial application. A rollback
+        // cleanup failure (AggregateError) may have left partial resources
+        // behind — surface it to the disposal caller instead of hiding it.
+        if (error instanceof AggregateError) {
+          throw error;
+        }
+      }
       const application = this.#application;
       this.#application = null;
       if (application !== null) {

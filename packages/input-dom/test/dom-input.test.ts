@@ -704,4 +704,151 @@ describe("DomInput attachment failure safety (E3-C)", () => {
     expect(() => domInput.dispose()).not.toThrow();
     expect(() => domInput.attach()).toThrow(DomInputError);
   });
+
+  /**
+   * E3 follow-up stress: repeated attach failures with cleanup failures.
+   * Failure round 1 strands a listener via a failing rollback; failure
+   * round 2 fails its own registration AND the stranded listener's retry
+   * removal. Dispose is the only path left, and it must collect the
+   * stranded listeners from BOTH rounds and stop event delivery.
+   */
+  it("stress: repeated attach failures with cleanup failures strand nothing after dispose", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    const domInput = createInput(input, targets);
+
+    // Round 1: keyup registration throws, keydown rollback removal throws —
+    // keydown's listener is stranded inside the adapter's tracking.
+    keyTarget.failRegistrationOn("keyup");
+    keyTarget.failRemovalOn("keydown");
+    expect(() => domInput.attach()).toThrow(AggregateError);
+    expect(domInput.attached).toBe(false);
+
+    // The stranded listener is still live (documented window).
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyS" }));
+    expect(input.isKeyDown("KeyS")).toBe(true);
+
+    // Round 2: registration fails at keyup again, and now the newly
+    // registered keydown fails its rollback. The local list only knows
+    // round-2 listeners; round 1's stranded listener stays in the instance
+    // tracking for dispose to reach.
+    keyTarget.failRemovalOn("keydown");
+    let caught2: unknown;
+    try {
+      domInput.attach();
+    } catch (error) {
+      caught2 = error;
+    }
+    expect(caught2).toBeInstanceOf(AggregateError);
+    const aggregate2 = caught2 as AggregateError;
+    // Registration error + one cleanup failure for the round-2 keydown.
+    expect(aggregate2.errors).toHaveLength(2);
+    expect((aggregate2.errors[0] as Error).message).toBe("addEventListener failed for keyup");
+    expect((aggregate2.errors[1] as Error).message).toBe("removeEventListener failed for keydown");
+
+    // Both rounds' keydown listeners are still live.
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyT" }));
+    expect(input.isKeyDown("KeyT")).toBe(true);
+
+    // Dispose retries every stranded removal and wins; the aggregate from
+    // attach was the last error — dispose itself succeeds.
+    keyTarget.failRegistrationOn("");
+    keyTarget.failRemovalOn("");
+    expect(() => domInput.dispose()).not.toThrow();
+    // Two removals for keydown: one in round 1 (failed), one per stranded
+    // listener in dispose.
+    expect(keyTarget.removalCounts.get("keydown")).toBe(2);
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyU" }));
+    expect(input.isKeyDown("KeyU")).toBe(false);
+
+    // Terminal: dispose is a no-op, attach stays rejected.
+    expect(() => domInput.dispose()).not.toThrow();
+    expect(() => domInput.attach()).toThrow(DomInputError);
+  });
+
+  /**
+   * E3 follow-up stress: an attach failure with NO cleanup failure leaves
+   * zero tracked registrations, and a successful retry followed by dispose
+   * removes exactly one listener per type — no duplicates from the failed
+   * round.
+   */
+  it("stress: failed attach then successful retry keeps listener bookkeeping balanced", () => {
+    const targets = createAdapters();
+    const { input, keyTarget, blurTarget, pointerUpTarget, canvas } = targets;
+    const domInput = createInput(input, targets);
+
+    // Failure round: keyup throws; keydown (and everything before it) rolls
+    // back cleanly — no cleanup failure, so the plain error is rethrown.
+    keyTarget.failRegistrationOn("keyup");
+    let caught: unknown;
+    try {
+      domInput.attach();
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).not.toBeInstanceOf(AggregateError);
+    expect((caught as Error).message).toBe("addEventListener failed for keyup");
+
+    // Successful retry: every listener registers exactly once.
+    keyTarget.failRegistrationOn("");
+    domInput.attach();
+    expect(domInput.attached).toBe(true);
+    expect(keyTarget.registrationCounts.get("keydown")).toBe(2); // 1 failed + 1 retry
+    expect(keyTarget.registrationCounts.get("keyup")).toBe(1); // the throw happens before registration
+    expect(keyTarget.removalCounts.get("keydown")).toBe(1); // rolled back once
+    expect(blurTarget.registrationCounts.get("blur")).toBe(1);
+    expect(canvas.registrationCounts.get("pointermove")).toBe(1);
+    expect(canvas.registrationCounts.get("pointerdown")).toBe(1);
+    expect(canvas.registrationCounts.get("pointerleave")).toBe(1);
+    expect(pointerUpTarget.registrationCounts.get("pointerup")).toBe(1);
+    expect(pointerUpTarget.registrationCounts.get("pointercancel")).toBe(1);
+
+    // Dispose removes exactly one live listener per registration.
+    domInput.dispose();
+    expect(keyTarget.removalCounts.get("keydown")).toBe(2);
+    expect(keyTarget.removalCounts.get("keyup")).toBe(1);
+    expect(blurTarget.removalCounts.get("blur")).toBe(1);
+    expect(canvas.removalCounts.get("pointermove")).toBe(1);
+    expect(pointerUpTarget.removalCounts.get("pointercancel")).toBe(1);
+    // Nothing survives: events after disposal mutate nothing.
+    keyTarget.dispatchEvent(new FakeDomEvent("keydown", { code: "KeyV" }));
+    canvas.dispatchEvent(new FakeDomEvent("pointerdown", { button: 2 }));
+    expect(input.isKeyDown("KeyV")).toBe(false);
+    expect(input.isButtonDown(2)).toBe(false);
+  });
+
+  /**
+   * E3 follow-up stress: a dispose whose removals fail STILL leaves the
+   * failed listeners tracked nowhere — the documented limitation is that
+   * such a listener may stay live on the target (the browser offers no
+   * recovery), but dispose must not throw anything other than the
+   * aggregate, must stay terminal, and repeated dispose must not rethrow
+   * or double-remove.
+   */
+  it("stress: dispose with failing removals stays terminal without duplicate cleanup", () => {
+    const targets = createAdapters();
+    const { input, keyTarget } = targets;
+    const domInput = createInput(input, targets);
+    domInput.attach();
+
+    keyTarget.failRemovalOn("keydown");
+    let caught: unknown;
+    try {
+      domInput.dispose();
+    } catch (error) {
+      caught = error;
+    }
+    expect(caught).toBeInstanceOf(AggregateError);
+    const aggregate = caught as AggregateError;
+    expect(aggregate.errors).toHaveLength(1);
+    expect((aggregate.errors[0] as Error).message).toBe("removeEventListener failed for keydown");
+
+    // Repeated dispose is a no-op: no second removal attempt, no rethrow.
+    // The failing removal threw before the fake's real removal ran, so the
+    // fake never recorded one — matching a real target whose removal failed.
+    expect(() => domInput.dispose()).not.toThrow();
+    expect(keyTarget.removalCounts.get("keydown")).toBeUndefined();
+    expect(() => domInput.attach()).toThrow(DomInputError);
+    expect(domInput.attached).toBe(false);
+  });
 });

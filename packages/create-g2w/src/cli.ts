@@ -9,6 +9,7 @@
  * All behavior is in `run()` so the CLI is deterministic and unit-testable.
  */
 import { spawnSync } from "node:child_process";
+import { realpathSync } from "node:fs";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -45,6 +46,15 @@ class ScaffoldError extends Error {}
 
 /** A template variable the generator substitutes in copied files. */
 const PROJECT_NAME_VARIABLE = "{{PROJECT_NAME}}";
+
+/**
+ * Maps a template file name to its generated name. npm/pnpm pack always
+ * exclude `.gitignore` from package archives, so the template ships the
+ * file as `gitignore` and the CLI renames it during the copy.
+ */
+export function targetRelativePath(relative: string): string {
+  return relative === "gitignore" ? ".gitignore" : relative;
+}
 
 /** Template files copied verbatim; nothing else is written. */
 const TEMPLATE_DIR = fileURLToPath(new URL("../template/", import.meta.url));
@@ -233,7 +243,7 @@ export async function run(
 
   for (const relative of templateFiles) {
     const source = path.join(TEMPLATE_DIR, relative);
-    const target = path.join(destination, relative);
+    const target = path.join(destination, targetRelativePath(relative));
     const contents = await readFile(source, "utf8");
     await mkdir(path.dirname(target), { recursive: true });
     await writeFile(target, contents.replaceAll(PROJECT_NAME_VARIABLE, projectName));
@@ -296,6 +306,23 @@ async function initializeGitRepository(
   io.log("Initialized an empty Git repository in the project (no remote, no initial commit).");
 }
 
+/**
+ * Whether this module is the process entry point. Comparison happens on
+ * realpaths: package managers install CLIs behind symlinks/junctions, where
+ * `import.meta.url` is the real (store) path while `process.argv[1]` is the
+ * link path — a plain URL comparison silently makes the CLI a no-op.
+ */
+export function isMainEntry(execArgPath: string | undefined, moduleUrl: string): boolean {
+  if (execArgPath === undefined) {
+    return false;
+  }
+  try {
+    return pathToFileURL(realpathSync(execArgPath)).href === moduleUrl;
+  } catch {
+    return false;
+  }
+}
+
 /** CLI entry point: runs and maps failures to exit codes. */
 export async function main(argv: string[]): Promise<number> {
   const io: RunIO = {
@@ -310,7 +337,6 @@ export async function main(argv: string[]): Promise<number> {
   }
 }
 
-if (import.meta.url === pathToFileURL(process.argv[1] ?? "").href) {
-  const exitCode = await main(process.argv.slice(2));
-  process.exitCode = exitCode;
+if (isMainEntry(process.argv[1], import.meta.url)) {
+  process.exitCode = await main(process.argv.slice(2));
 }

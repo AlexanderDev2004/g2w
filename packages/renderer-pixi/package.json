@@ -4,6 +4,11 @@
   "description": "PixiJS renderer adapter implementing the @g2w/core renderer contract.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/renderer-pixi"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

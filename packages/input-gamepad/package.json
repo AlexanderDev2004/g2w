@@ -4,6 +4,11 @@
   "description": "Gamepad (Gamepad API) adapter feeding sampled controller state into the @g2w/core GamepadState.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/input-gamepad"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

@@ -16,7 +16,9 @@
     "format": "biome format --write .",
     "test": "vitest run",
     "typecheck": "tsc -p tsconfig.check.json --noEmit",
-    "verify:exports": "node scripts/verify-exports.mjs"
+    "verify:exports": "node scripts/verify-exports.mjs",
+    "test:pack": "node scripts/validate-packages.mjs",
+    "release:rehearsal": "node scripts/release-rehearsal.mjs"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.6.2",

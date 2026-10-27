@@ -4,6 +4,11 @@
   "description": "Effect-based runtime and bootstrap foundation for g2w: a managed lifecycle scope with explicit, idempotent shutdown.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/runtime"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

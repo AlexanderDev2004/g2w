@@ -4,6 +4,7 @@ import {
   GameError,
   type GameState,
   type Renderer,
+  type RendererBackend,
   type RendererInitOptions,
   type SceneManager,
 } from "@g2w/core";
@@ -20,6 +21,14 @@ export interface G2WGameOptions {
   readonly backgroundColor?: string;
   /** Optional resolution passed through to the renderer. */
   readonly resolution?: number;
+  /**
+   * Preferred rendering backend passed through to the renderer. Optional;
+   * omitted keeps the renderer's default selection. A preference, not a
+   * guarantee — the renderer may fall back to another backend it supports,
+   * and the actually initialized backend is reported on the renderer's
+   * capabilities, never here.
+   */
+  readonly backend?: RendererBackend;
   /**
    * Logical resolution width passed through to the renderer. Optional; see
    * `RendererInitOptions.width` for the semantics (both dimensions or
@@ -144,6 +153,7 @@ export class G2WGame {
       canvas: options.canvas,
       backgroundColor: options.backgroundColor,
       resolution: options.resolution,
+      ...(options.backend === undefined ? {} : { backend: options.backend }),
       ...(options.width === undefined && options.height === undefined
         ? {}
         : { width: options.width, height: options.height }),

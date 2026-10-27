@@ -9,7 +9,26 @@ export interface RendererCapabilities {
   readonly id: string;
   /** Human-readable renderer name, e.g. `"PixiJS"`. */
   readonly displayName: string;
+  /**
+   * The rendering backend actually initialized, in the renderer's own
+   * vocabulary (for PixiJS 8: `"webgl"`, `"webgpu"`, or `"canvas"`).
+   * Optional: `undefined` before the first successful initialization, after
+   * a failed initialization, and after disposal. Renderers that do not have
+   * a backend concept may leave it `undefined` at all times. This reports
+   * what is running — never the requested preference (a preference may fall
+   * back to a different backend).
+   */
+  readonly backend?: string;
 }
+
+/**
+ * Rendering backends a renderer implementation may support, expressed in the
+ * renderer's own vocabulary (for PixiJS 8: `"webgl" | "webgpu" | "canvas"`).
+ * A value here is a *preference*: a renderer may fall back to another backend
+ * it supports, and the actually initialized backend is reported through
+ * {@link RendererCapabilities.backend} after initialization succeeds.
+ */
+export type RendererBackend = "webgl" | "webgpu" | "canvas";
 
 /**
  * Options passed to {@link Renderer.initialize}.
@@ -21,6 +40,15 @@ export interface RendererInitOptions {
    * renderer must not remove it from the DOM.
    */
   readonly canvas: HTMLCanvasElement;
+  /**
+   * Preferred rendering backend. Optional; when omitted the renderer uses
+   * its own default selection. This is a preference, not a guarantee — the
+   * renderer may fall back to another backend it supports (for PixiJS 8:
+   * auto-detection tries the preferred backend first, then the remaining
+   * ones). The actually initialized backend is reported on the renderer's
+   * capabilities, never this option.
+   */
+  readonly backend?: RendererBackend;
   /**
    * Logical resolution width in pixels: the coordinate space game code
    * positions content in (the stage space). Optional; when omitted the

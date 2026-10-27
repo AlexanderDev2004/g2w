@@ -25,9 +25,12 @@ export interface PixiApplicationLike {
   /**
    * The PixiJS renderer system. `resize(width, height)` changes the logical
    * resolution and the drawing buffer; with `autoDensity` it also updates
-   * the canvas's CSS size. It never touches textures.
+   * the canvas's CSS size. It never touches textures. `name` is PixiJS's
+   * public renderer name (`"webgl"`, `"webgpu"`, or `"canvas"`) and reports
+   * which backend was actually created — it is set by the chosen renderer
+   * class, never by init options, so it is safe to read after `init()`.
    */
-  readonly renderer: { resize(width: number, height: number): void };
+  readonly renderer: { readonly name: string; resize(width: number, height: number): void };
 }
 
 /** Options for constructing a {@link PixiRenderer}. */
@@ -76,10 +79,20 @@ export interface PixiRendererOptions {
  * explicitly with `Assets.unload(url)`.
  */
 export class PixiRenderer implements Renderer {
-  readonly capabilities: RendererCapabilities = {
-    id: "pixi",
-    displayName: "PixiJS",
-  };
+  /**
+   * Renderer identity is static; the `backend` capability is dynamic and
+   * tracks the actually initialized backend (`undefined` until then).
+   */
+  get capabilities(): RendererCapabilities {
+    const renderer = this;
+    return {
+      id: "pixi",
+      displayName: "PixiJS",
+      get backend(): string | undefined {
+        return renderer.#activeBackend;
+      },
+    };
+  }
 
   /**
    * The application, assigned only once its `init()` has resolved — so
@@ -87,6 +100,15 @@ export class PixiRenderer implements Renderer {
    * accessor keeps rejecting with the uninitialized contract.
    */
   #application: PixiApplicationLike | null = null;
+  /**
+   * The rendering backend the application actually initialized, read from
+   * PixiJS's public `renderer.name` after a successful `init()`. `undefined`
+   * while uninitialized; cleared on rollback and disposal so the capability
+   * never reports a backend the renderer is not running. PixiJS's own
+   * `Application` instance is what produced the value, so a fake (or a
+   * future adapter) that never initializes never reports one.
+   */
+  #activeBackend: string | undefined = undefined;
   readonly #createApplication: () => PixiApplicationLike;
 
   /**
@@ -105,6 +127,17 @@ export class PixiRenderer implements Renderer {
 
   get initialized(): boolean {
     return this.#application !== null;
+  }
+
+  /**
+   * The rendering backend the application actually initialized, in PixiJS's
+   * vocabulary (`"webgl"`, `"webgpu"`, or `"canvas"`). `undefined` before
+   * the first successful initialization, after a failed initialization, and
+   * after disposal. Reports what is running — never the requested backend
+   * preference, which PixiJS may fall back from.
+   */
+  get backend(): string | undefined {
+    return this.#activeBackend;
   }
 
   /**
@@ -188,6 +221,12 @@ export class PixiRenderer implements Renderer {
         canvas: options.canvas,
         autoDensity: true,
         autoStart: false,
+        // Backend preference: forwarded as PixiJS's own `preference` option.
+        // PixiJS tries the preferred backend first and falls back to the
+        // remaining ones in its default order, so an unavailable backend is
+        // a fallback, not an error. The actual result is read from the
+        // application's renderer name after init — never from this option.
+        ...(options.backend === undefined ? {} : { preference: options.backend }),
         ...(options.width === undefined || options.height === undefined
           ? {}
           : { width: options.width, height: options.height }),
@@ -211,7 +250,30 @@ export class PixiRenderer implements Renderer {
       this.#resetAfterFailedInit();
       throw error;
     }
+    // Backend detection: PixiJS sets `renderer.name` on the concrete
+    // renderer class it created ("webgl" | "webgpu" | "canvas"), so this is
+    // the actual backend, independent of the requested preference. A
+    // detection failure is an initialization failure like any other: the
+    // rollback below releases the fully initialized application and the
+    // renderer stays retryable, rather than running with unknown reporting.
+    let activeBackend: string;
+    try {
+      activeBackend = application.renderer.name;
+    } catch (error) {
+      try {
+        this.#destroyApplication(application);
+      } catch (cleanupError) {
+        this.#resetAfterFailedInit();
+        throw new AggregateError(
+          [error, cleanupError],
+          "PixiRenderer could not detect the initialized backend and rollback cleanup failed.",
+        );
+      }
+      this.#resetAfterFailedInit();
+      throw error;
+    }
     this.#application = application;
+    this.#activeBackend = activeBackend;
     this.#initPromise = null;
     this.#lifecycle = "initialized";
   }
@@ -219,6 +281,7 @@ export class PixiRenderer implements Renderer {
   #resetAfterFailedInit(): void {
     this.#initPromise = null;
     this.#lifecycle = "new";
+    this.#activeBackend = undefined;
   }
 
   /**
@@ -283,6 +346,7 @@ export class PixiRenderer implements Renderer {
     const application = this.#application;
     this.#application = null;
     this.#lifecycle = "new";
+    this.#activeBackend = undefined;
     try {
       this.#destroyApplication(application);
     } catch (error) {
@@ -306,6 +370,7 @@ export class PixiRenderer implements Renderer {
       }
       const application = this.#application;
       this.#application = null;
+      this.#activeBackend = undefined;
       if (application !== null) {
         this.#destroyApplication(application);
       }
@@ -324,6 +389,7 @@ export class PixiRenderer implements Renderer {
     // shared `Assets` cache (see createTextureAssetManager) and may still be
     // referenced by other managers, sprites, or subsystems, so destroying
     // them here could invalidate resources the renderer does not own.
+    this.#activeBackend = undefined;
     application.destroy({ removeView: false }, { children: true });
   }
 }

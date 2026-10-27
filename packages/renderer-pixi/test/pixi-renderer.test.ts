@@ -97,7 +97,7 @@ describe("PixiRenderer disposal and texture ownership (R1)", () => {
         stage.destroy(textureOptions);
       },
       stage,
-      renderer: { resize: () => {} },
+      renderer: { name: "webgl", resize: () => {} },
     };
     return { application, stage };
   }
@@ -259,6 +259,7 @@ describe("PixiRenderer sizing and resize (R3)", () => {
       },
       stage: new Container(),
       renderer: {
+        name: "webgl",
         resize(width, height) {
           application.resizeCalls.push([width, height]);
         },
@@ -428,7 +429,7 @@ describe("PixiRenderer lifecycle (E3-B)", () => {
         application.destroyCalls += 1;
       },
       stage: new Container(),
-      renderer: { resize: () => {} },
+      renderer: { name: "webgl", resize: () => {} },
     };
     return {
       application,
@@ -669,5 +670,141 @@ describe("PixiRenderer lifecycle (E3-B)", () => {
     // ...but the renderer still resets so it can be initialized again.
     expect(renderer.initialized).toBe(false);
     await expect(renderer.dispose()).rejects.toThrow(RendererError);
+  });
+});
+/**
+ * R6-1: backend selection and actual-backend reporting.
+ *
+ * The fake application records the full init-options object (so the
+ * forwarding of the backend preference to PixiJS's `preference` option is
+ * pinned) and exposes an adjustable `renderer.name`, which is the public
+ * property PixiJS sets on the concrete renderer class it actually created.
+ * Reporting tests set a name that differs from the requested preference to
+ * pin that the capability reports what runs, not what was requested.
+ */
+describe("PixiRenderer backend selection and reporting (R6-1)", () => {
+  interface BackendFakeApplication extends PixiApplicationLike {
+    initOptions: Partial<ApplicationOptions> | null;
+    destroyCalls: number;
+    failInit: boolean;
+  }
+
+  function backendApplication(name: string): BackendFakeApplication {
+    const application: BackendFakeApplication = {
+      init: async (options) => {
+        application.initOptions = options ?? null;
+        if (application.failInit) {
+          throw new Error("init failed");
+        }
+      },
+      render: () => {},
+      destroy() {
+        application.destroyCalls += 1;
+      },
+      stage: new Container(),
+      renderer: {
+        name,
+        resize: () => {},
+      },
+      initOptions: null,
+      destroyCalls: 0,
+      failInit: false,
+    };
+    return application;
+  }
+
+  it("keeps PixiJS auto-detection when no backend preference is configured", async () => {
+    const application = backendApplication("webgl");
+    const renderer = new PixiRenderer({ createApplication: () => application });
+    await renderer.initialize({ canvas: fakeCanvas() });
+
+    expect(application.initOptions).not.toBeNull();
+    expect("preference" in (application.initOptions ?? {})).toBe(false);
+  });
+
+  it.each(["webgl", "webgpu", "canvas"] as const)(
+    "forwards an explicit %s backend preference to PixiJS",
+    async (backend) => {
+      const application = backendApplication(backend);
+      const renderer = new PixiRenderer({ createApplication: () => application });
+      await renderer.initialize({ canvas: fakeCanvas(), backend });
+
+      expect(application.initOptions?.preference).toBe(backend);
+    },
+  );
+
+  it("reports the actually initialized backend from the renderer, not the preference", async () => {
+    // The preference asks for webgpu, but the application reports that the
+    // concrete renderer created was webgl (a fallback): the capability must
+    // expose webgl — what runs — never the requested webgpu.
+    const application = backendApplication("webgl");
+    const renderer = new PixiRenderer({ createApplication: () => application });
+    await renderer.initialize({ canvas: fakeCanvas(), backend: "webgpu" });
+
+    expect(application.initOptions?.preference).toBe("webgpu");
+    expect(renderer.capabilities.backend).toBe("webgl");
+    expect(renderer.backend).toBe("webgl");
+  });
+
+  it("reports no backend before initialization and after disposal", async () => {
+    const application = backendApplication("webgl");
+    const renderer = new PixiRenderer({ createApplication: () => application });
+    expect(renderer.capabilities.backend).toBeUndefined();
+    expect(renderer.backend).toBeUndefined();
+
+    await renderer.initialize({ canvas: fakeCanvas() });
+    expect(renderer.capabilities.backend).toBe("webgl");
+
+    await renderer.dispose();
+    expect(renderer.capabilities.backend).toBeUndefined();
+    expect(renderer.backend).toBeUndefined();
+    expect(renderer.initialized).toBe(false);
+  });
+
+  it("clears the backend report when a failed initialization rolls back", async () => {
+    const application = backendApplication("webgl");
+    application.failInit = true;
+    const renderer = new PixiRenderer({ createApplication: () => application });
+
+    await expect(renderer.initialize({ canvas: fakeCanvas(), backend: "webgl" })).rejects.toThrow(
+      "init failed",
+    );
+    expect(application.destroyCalls).toBe(1);
+    expect(renderer.capabilities.backend).toBeUndefined();
+    expect(renderer.initialized).toBe(false);
+
+    // Retry after the failure initializes cleanly and reports again.
+    application.failInit = false;
+    await renderer.initialize({ canvas: fakeCanvas(), backend: "webgl" });
+    expect(renderer.capabilities.backend).toBe("webgl");
+  });
+
+  it("cleans up and stays retryable when backend detection fails after a successful init", async () => {
+    const application = backendApplication("webgl");
+    // Simulate detection failing on the just-initialized application.
+    Object.defineProperty(application.renderer, "name", {
+      get() {
+        throw new Error("backend detection failed");
+      },
+    });
+    const renderer = new PixiRenderer({ createApplication: () => application });
+
+    await expect(renderer.initialize({ canvas: fakeCanvas() })).rejects.toThrow(
+      "backend detection failed",
+    );
+    expect(application.destroyCalls).toBe(1);
+    expect(renderer.capabilities.backend).toBeUndefined();
+    expect(renderer.initialized).toBe(false);
+  });
+
+  it("re-reports the backend on reinitialization after disposal", async () => {
+    const application = backendApplication("canvas");
+    const renderer = new PixiRenderer({ createApplication: () => application });
+    await renderer.initialize({ canvas: fakeCanvas() });
+    expect(renderer.capabilities.backend).toBe("canvas");
+
+    await renderer.dispose();
+    await renderer.initialize({ canvas: fakeCanvas() });
+    expect(renderer.capabilities.backend).toBe("canvas");
   });
 });

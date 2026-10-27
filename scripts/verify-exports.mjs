@@ -92,6 +92,15 @@ if (typeof renderer.createSpriteView !== "function") {
   throw new Error("@g2w/renderer-pixi does not export createSpriteView.");
 }
 
+// R6-1: the backend-selection API is reachable through the real entry points
+// and the capability reports no backend before initialization.
+const pixiRenderer = new renderer.PixiRenderer();
+if (pixiRenderer.capabilities.id !== "pixi" || pixiRenderer.capabilities.backend !== undefined) {
+  throw new Error(
+    "PixiRenderer capabilities do not expose the R6-1 backend contract (undefined before init).",
+  );
+}
+
 // Exercise the sprite model -> view pipeline through the real entry points.
 // The fake texture handle proves the core model and the view creation do not
 // require a PixiJS Texture object (nothing renders in Node).

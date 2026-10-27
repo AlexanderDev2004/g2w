@@ -57,6 +57,11 @@ The Effect-based runtime and bootstrap foundation (E1 of the Effect-native runti
 - The frame hot path is untouched by Effect: exactly one injected `FrameScheduler` (defaulting to `requestAnimationFrame`, re-exported from core), synchronous update/render dispatch, and no runtime, effect, or promise allocation per frame.
 
 Core `Game` remains the reference implementation. The hello-world demo now boots through `G2WGame` (E4), making the Effect runtime the primary application path: the demo's scene manager, audio stack, and asset manager are registered as caller finalizers, so `G2WGame.dispose()` releases assets, audio, scenes, and the renderer in one LIFO chain. The demo bundle now includes Effect (measured: 706,420 B total across `examples/hello-world/dist`, up from 623,910 B — see [Hello-world demo](#hello-world-demo)).
+
+### `create-g2w`
+
+The starter-template CLI (R7). A zero-dependency Node >= 22 tool — no g2w imports, no prompts, no child processes — that copies its bundled `template/` directory into the destination with `{{PROJECT_NAME}}` substitution. It refuses non-empty destinations without `--force`, never deletes foreign files, and fails with actionable nonzero-exit errors. The generated project mirrors the demo's lifecycle conventions: `G2WGame` owns the lifecycle, scenes register as finalizers, adapters dispose first on `pagehide`, and player logic lives in pure renderer-agnostic modules unit-tested by Vitest. Because the `@g2w/*` packages are not published to npm yet (R10), the template pins them at `0.1.0` and the whole flow is validated against locally packed tarballs by `node scripts/smoke-create-g2w.mjs` (manual, browser-dependent, not part of `pnpm test`); published-package validation is blocked on R10.
+
 ### `Game` — lifecycle and frame loop
 
 `Game` (in core) owns exactly one renderer and drives it with a `requestAnimationFrame` loop. The state model:

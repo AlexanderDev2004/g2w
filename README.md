@@ -16,6 +16,7 @@ packages/audio-web/src/           Web Audio (browser) backend: decodes sound fil
 packages/renderer-pixi/src/       PixiJS implementation of the renderer contract + texture asset loader
 packages/devtools/src/            Read-only dev overlay: scenes, objects, transforms, FPS, input, logs
 packages/runtime/src/             Effect-based runtime/bootstrap foundation (managed runtime, explicit shutdown) + Effect-native game lifecycle (G2WGame)
+packages/create-g2w/              create-g2w CLI: scaffolds a new TypeScript + Vite g2w game project
 examples/hello-world/             Vite browser demo: G2WGame (Effect runtime) + SceneManager + input + PixiRenderer
 docs/architecture.md              Architecture decisions and direction
 ```
@@ -111,6 +112,19 @@ flowchart TB
 pnpm install
 ```
 
+### Create a new game (R7)
+
+`create-g2w` scaffolds a working TypeScript + Vite 2D game from a template that boots through the public g2w API (`G2WGame`, `SceneManager`, `InputState`, `PixiRenderer`):
+
+```sh
+pnpm create g2w my-game
+cd my-game
+pnpm install
+pnpm dev
+```
+
+The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts a target directory, refuses to overwrite existing files without `--force`, and prints next steps. Validated end to end (install, typecheck, unit tests, production build, browser smoke) against locally packed `@g2w/*` tarballs with `node scripts/smoke-create-g2w.mjs` — the `@g2w/*` packages are **not published to npm yet** (ROADMAP R10), so until then a generated project resolves them from packed tarballs, and `pnpm create g2w` works only after publishing. From a clone, the CLI can be run directly: `node packages/create-g2w/dist/cli.js my-game` (after `pnpm build`).
+
 ## Development commands
 
 | Command               | What it does                                            |
@@ -171,6 +185,7 @@ Note on the screenshots: they were captured from a real headed-Chrome session vi
 - **No dedicated animation framework** — animation is done by mutating models in `update(deltaTime)` (the demo does this for rotation/scale); there are no tweening, keyframe, or skeletal systems.
 - **No key/button remapping, action mapping, or rebinding** — gamepad and touch deliver raw button/axis/position state; remapping and high-level action systems are future roadmap items.
 - **No 3D adapter** — the Three.js adapter is exploratory ([ROADMAP.md](ROADMAP.md) R8).
+- **The `@g2w/*` packages are not published to npm** — generated `create-g2w` projects declare them at `0.1.0`; until R10 lands, they are validated and consumed through locally packed tarballs (`node scripts/smoke-create-g2w.mjs`), and `pnpm create g2w` requires publishing first.
 - **Texture lifetime is non-destructive** — neither the asset manager nor the renderer ever destroys textures from PixiJS's shared cache; they live until page unload unless the application unloads them explicitly (the resolved R1 decision, documented in [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md)).
 - **DevTools is read-only and dev-only** — the overlay observes snapshots only (scenes, registered objects, explicitly watched keys/buttons, FPS, bounded log); it cannot mutate the runtime, does not see unwatched input, labels objects positionally (`#N`, not stable IDs), and is not included in production bundles.
 

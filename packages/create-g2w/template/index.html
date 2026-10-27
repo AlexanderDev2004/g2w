@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>{{PROJECT_NAME}}</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14141e;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+      #error {
+        color: #ff6b6b;
+        white-space: pre-wrap;
+        max-width: 640px;
+      }
+      /* Fixed logical resolution with proportional display scaling: the
+         canvas is 640x360 logical pixels and shrinks proportionally on
+         narrower viewports instead of overflowing the page. */
+      #game {
+        /* !important is required: PixiJS autoDensity writes inline
+           width/height styles on the canvas, and inline styles beat plain
+           stylesheet declarations. */
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        max-width: 100% !important;
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        height: auto !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <canvas id="game" width="640" height="360"></canvas>
+      <pre id="error" hidden></pre>
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

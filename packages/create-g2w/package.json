@@ -1,0 +1,20 @@
+{
+  "name": "create-g2w",
+  "version": "0.1.0",
+  "description": "Scaffold a new g2w game project: TypeScript + Vite 2D starter using the public g2w API.",
+  "type": "module",
+  "license": "MIT",
+  "bin": {
+    "create-g2w": "./dist/cli.js"
+  },
+  "files": [
+    "dist",
+    "template"
+  ],
+  "scripts": {
+    "build": "tsc -b"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,11 +1,17 @@
 import { spawnSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, realpathSync, symlinkSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
-import { fileURLToPath } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { type GitCommandResult, type GitRunner, run } from "../src/cli.js";
+import {
+  type GitCommandResult,
+  type GitRunner,
+  isMainEntry,
+  run,
+  targetRelativePath,
+} from "../src/cli.js";
 
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templateDir = path.join(packageDir, "template");
@@ -130,7 +136,10 @@ describe("create-g2w generation", () => {
       return files.sort();
     }
 
-    const expected = await list(templateDir);
+    // The template's `gitignore` generates as `.gitignore` (npm/pnpm pack
+    // exclude dot-gitignore files from archives, so the template ships it
+    // under the dotless name and the CLI renames it).
+    const expected = (await list(templateDir)).map((file) => targetRelativePath(file)).sort();
     const actual = await list(target);
     expect(actual).toEqual(expected);
   });
@@ -253,6 +262,35 @@ describe("create-g2w template hygiene", () => {
     expect(gitignore).toContain(".env");
     // The manifest itself must stay tracked.
     expect(gitignore).not.toMatch(/^package\.json$/m);
+  });
+});
+
+describe("create-g2w entry detection", () => {
+  const cliSource = path.join(packageDir, "src", "cli.ts");
+  // Node resolves symlinked entries to the real path, so import.meta.url for
+  // the real file is exactly pathToFileURL(realpathSync(source)).
+  const cliModuleUrl = pathToFileURL(realpathSync(cliSource)).href;
+
+  it("matches the module URL for the file itself", () => {
+    expect(isMainEntry(cliSource, cliModuleUrl)).toBe(true);
+  });
+
+  it("matches through a directory junction/symlink (the package-manager install case)", async () => {
+    const dir = await scratch();
+    // On Windows a directory junction needs no privileges; POSIX uses a symlink.
+    const link = path.join(dir, "linked-dist");
+    symlinkSync(packageDir, link, "junction");
+    const throughLink = path.join(link, "src", "cli.ts");
+    expect(isMainEntry(throughLink, cliModuleUrl)).toBe(true);
+  });
+
+  it("does not match a different file", () => {
+    expect(isMainEntry(path.join(packageDir, "package.json"), cliModuleUrl)).toBe(false);
+  });
+
+  it("does not match a missing or undefined entry path", async () => {
+    expect(isMainEntry(undefined, cliModuleUrl)).toBe(false);
+    expect(isMainEntry(path.join(await scratch(), "nope.js"), cliModuleUrl)).toBe(false);
   });
 });
 

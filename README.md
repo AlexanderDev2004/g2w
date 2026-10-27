@@ -127,16 +127,18 @@ The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts 
 
 ## Development commands
 
-| Command               | What it does                                            |
-| --------------------- | ------------------------------------------------------- |
-| `pnpm dev`            | Run the hello-world browser demo with Vite              |
-| `pnpm build`          | Type-check and build all packages to `dist/`            |
-| `pnpm build:example`  | Build the hello-world demo bundle (production build)    |
-| `pnpm typecheck`      | Type-check all sources, tests, and examples (no output) |
-| `pnpm check`          | Format and lint check with Biome                        |
-| `pnpm format`         | Auto-format sources with Biome                          |
-| `pnpm test`           | Run all tests with Vitest                               |
-| `pnpm verify:exports` | Verify built packages load through their entry points   |
+| Command                  | What it does                                                                                                                                                                                                                                                                                                  |
+| ------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `pnpm dev`               | Run the hello-world browser demo with Vite                                                                                                                                                                                                                                                                    |
+| `pnpm build`             | Type-check and build all packages to `dist/`                                                                                                                                                                                                                                                                  |
+| `pnpm build:example`     | Build the hello-world demo bundle (production build)                                                                                                                                                                                                                                                          |
+| `pnpm typecheck`         | Type-check all sources, tests, and examples (no output)                                                                                                                                                                                                                                                       |
+| `pnpm check`             | Format and lint check with Biome                                                                                                                                                                                                                                                                              |
+| `pnpm format`            | Auto-format sources with Biome                                                                                                                                                                                                                                                                                |
+| `pnpm test`              | Run all tests with Vitest                                                                                                                                                                                                                                                                                     |
+| `pnpm verify:exports`    | Verify built packages load through their entry points                                                                                                                                                                                                                                                         |
+| `pnpm test:pack`         | R10 packability validation: packs all eight intended publishable packages, audits each tarball (manifests, exports, archive contents, no `workspace:*` residue), and consumes them from a throwaway TypeScript + Vite project outside the monorepo (manual, not in CI — fresh installs are network-dependent) |
+| `pnpm release:rehearsal` | R10 release rehearsal: version-consistency and metadata audit plus `npm pack --dry-run` for every package, then the planned release order — never publishes or touches the registry (see [docs/release.md](docs/release.md))                                                                                  |
 
 ## What is implemented
 

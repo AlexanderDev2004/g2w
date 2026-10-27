@@ -4,6 +4,11 @@
   "description": "DOM (browser) input adapter feeding normalized keyboard and pointer events into the @g2w/core InputState.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/input-dom"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

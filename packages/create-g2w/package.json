@@ -4,6 +4,11 @@
   "description": "Scaffold a new g2w game project: TypeScript + Vite 2D starter using the public g2w API.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/create-g2w"
+  },
   "bin": {
     "create-g2w": "./dist/cli.js"
   },

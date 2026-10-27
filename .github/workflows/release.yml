@@ -1,0 +1,167 @@
+# R10 Phase 2 — explicit release workflow. This file NEVER runs on push,
+# pull_request, or any routine event: the only trigger is a manual
+# workflow_dispatch. Publishing is further gated behind two inputs
+# (`dry_run: false` AND `confirm` matching `version`) plus the protected
+# `npm-release` GitHub environment, and requires the npm-side Trusted
+# Publisher configuration documented in docs/release.md. Until all of that
+# is configured, runs are rehearsals only: they validate, pack, and inspect
+# — they never publish, never create tags, and never touch the registry.
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Exact release version to validate (must equal the version in every package manifest, e.g. 0.1.0)"
+        required: true
+        type: string
+      dry_run:
+        description: "Rehearsal only when true (default). Publishing happens only when this is false AND confirm matches."
+        required: false
+        type: boolean
+        default: true
+      confirm:
+        description: "To enable the publish job, re-type the exact version here. Any mismatch keeps the run a rehearsal."
+        required: false
+        type: string
+        default: ""
+
+# Least privilege: validation only needs to read the repository. The publish
+# job additionally needs id-token: write for npm Trusted Publishing (OIDC).
+permissions:
+  contents: read
+
+jobs:
+  validate:
+    name: Validate release candidate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+
+      # Refuse an invalid version input before doing any work. The input is
+      # passed via the environment (never interpolated into the script) so it
+      # cannot become shell injection.
+      - name: Validate release version input
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          if ! echo "$VERSION" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-beta\.[0-9]+)?$'; then
+            echo "::error::version input '$VERSION' is not a valid release version (expected x.y.z or x.y.z-beta.n)"
+            exit 1
+          fi
+          DECLARED=$(node -p "JSON.parse(require('fs').readFileSync('packages/core/package.json','utf8')).version")
+          if [ "$VERSION" != "$DECLARED" ]; then
+            echo "::error::version input '$VERSION' does not match the manifests' fixed version '$DECLARED'. Bump all packages first (docs/release.md)."
+            exit 1
+          fi
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Format and lint
+        run: pnpm check
+
+      - name: Type check
+        run: pnpm typecheck
+
+      - name: Build
+        run: pnpm build
+
+      - name: Build example
+        run: pnpm build:example
+
+      - name: Verify package exports
+        run: pnpm verify:exports
+
+      - name: Test
+        run: pnpm test
+
+      # Phase 1 harness: packs all eight packages and audits every tarball.
+      - name: Packability validation
+        run: pnpm test:pack
+
+      # Phase 2 rehearsal: metadata audit, npm pack --dry-run, release plan.
+      - name: Release rehearsal
+        run: pnpm release:rehearsal
+
+  publish:
+    name: Publish to npm (gated)
+    # Runs ONLY when the dispatcher explicitly asked for a real publish and
+    # confirmed it by re-typing the version. Every ordinary dispatch is a
+    # rehearsal: with the default dry_run=true this job is skipped entirely.
+    if: ${{ inputs.dry_run == false && inputs.confirm == inputs.version }}
+    needs: validate
+    runs-on: ubuntu-latest
+    # npm Trusted Publishing: OIDC token minted for this exact workflow
+    # (AlexanderDev2004/g2w, .github/workflows/release.yml, environment
+    # npm-release). The environment must exist on GitHub with required
+    # reviewers, and every package must have a matching Trusted Publisher
+    # configured on npmjs.com BEFORE this job can succeed (docs/release.md).
+    environment: npm-release
+    permissions:
+      contents: read
+      id-token: write # OIDC for npm trusted publishing + provenance
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: pnpm/action-setup@b906affcce14559ad1aafd4ab0e942779e9f58b1 # v4.3.0
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: 22
+          cache: pnpm
+          registry-url: https://registry.npmjs.org
+
+      # Trusted Publishing requires npm >= 11.5.1 (the bundled npm on Node 22
+      # is older); upgrade explicitly. No npm token is stored or used.
+      - name: Upgrade npm for trusted publishing
+        run: npm install -g npm@^11.5.1
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build
+        run: pnpm build
+
+      # Publish in dependency order (docs/release.md): core first, the
+      # adapters/runtime, then the CLI that pins them. --provenance mints the
+      # npm provenance attestation from the same OIDC identity. No token is
+      # echoed; npm never prints credentials.
+      - name: Publish @g2w/core
+        run: npm publish --provenance --access public
+        working-directory: packages/core
+
+      - name: Publish @g2w/runtime
+        run: npm publish --provenance --access public
+        working-directory: packages/runtime
+
+      - name: Publish @g2w/renderer-pixi
+        run: npm publish --provenance --access public
+        working-directory: packages/renderer-pixi
+
+      - name: Publish @g2w/input-dom
+        run: npm publish --provenance --access public
+        working-directory: packages/input-dom
+
+      - name: Publish @g2w/input-gamepad
+        run: npm publish --provenance --access public
+        working-directory: packages/input-gamepad
+
+      - name: Publish @g2w/audio-web
+        run: npm publish --provenance --access public
+        working-directory: packages/audio-web
+
+      - name: Publish @g2w/devtools
+        run: npm publish --provenance --access public
+        working-directory: packages/devtools
+
+      - name: Publish create-g2w
+        run: npm publish --provenance --access public
+        working-directory: packages/create-g2w

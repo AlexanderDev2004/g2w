@@ -4,6 +4,11 @@
   "description": "Web Audio (browser) backend for the @g2w/core AudioManager: decodes sound files, starts playbacks, and owns the AudioContext lifecycle.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/AlexanderDev2004/g2w.git",
+    "directory": "packages/audio-web"
+  },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "exports": {

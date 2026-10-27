@@ -94,9 +94,12 @@ jobs:
   publish:
     name: Publish to npm (gated)
     # Runs ONLY when the dispatcher explicitly asked for a real publish and
-    # confirmed it by re-typing the version. Every ordinary dispatch is a
+    # confirmed it by re-typing the version, AND the run is on `main` — the
+    # release policy (docs/release.md) only ever publishes a commit that is
+    # already on the default branch, so dispatching this workflow on any
+    # other branch is always a rehearsal. Every ordinary dispatch is a
     # rehearsal: with the default dry_run=true this job is skipped entirely.
-    if: ${{ inputs.dry_run == false && inputs.confirm == inputs.version }}
+    if: ${{ github.ref == 'refs/heads/main' && inputs.dry_run == false && inputs.confirm == inputs.version }}
     needs: validate
     runs-on: ubuntu-latest
     # npm Trusted Publishing: OIDC token minted for this exact workflow

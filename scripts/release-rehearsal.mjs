@@ -193,6 +193,12 @@ try {
     if (!publishJob.includes("environment: npm-release")) {
       fail("publish job must run in the protected npm-release environment");
     }
+    // Publishing must only ever run from the default branch (docs/release.md):
+    // dispatching the workflow on any other branch is always a rehearsal
+    // (regression guard for the branch-restriction finding caught in review).
+    if (!publishJob.includes("github.ref == 'refs/heads/main' && inputs.dry_run == false")) {
+      fail("publish job must be gated on the main branch (github.ref == 'refs/heads/main')");
+    }
     const publishSteps = publishJob.match(/npm publish --provenance --access public/g)?.length ?? 0;
     if (publishSteps !== RELEASE_ORDER.length) {
       fail(`expected ${RELEASE_ORDER.length} publish steps, found ${publishSteps}`);

@@ -193,12 +193,38 @@ try {
     if (!publishJob.includes("environment: npm-release")) {
       fail("publish job must run in the protected npm-release environment");
     }
-    const publishSteps = publishJob.match(/run: npm publish/g)?.length ?? 0;
+    const publishSteps = publishJob.match(/npm publish --provenance --access public/g)?.length ?? 0;
     if (publishSteps !== RELEASE_ORDER.length) {
       fail(`expected ${RELEASE_ORDER.length} publish steps, found ${publishSteps}`);
     }
     if (/run: npm publish/.test(prePublish)) {
       fail("npm publish is reachable outside the publish job");
+    }
+    // Publishing must use the pnpm-rewritten tarballs (the audited artifacts),
+    // never a raw `npm publish` of a workspace manifest whose `@g2w/*:
+    // workspace:*` spec npm cannot resolve (regression guard for the tarball
+    // defect caught in review). Command lines only — comments are skipped.
+    if (!/pnpm -r pack --pack-destination/.test(publishJob)) {
+      fail("publish job must pack rewritten tarballs via pnpm before publishing");
+    }
+    const publishCommands = [...publishJob.matchAll(/^[ \t]*npm publish[^\n]*/gm)].map((m) =>
+      m[0].trim(),
+    );
+    const badPublish = publishCommands.filter((cmd) => !cmd.includes("packed/"));
+    if (badPublish.length > 0) {
+      fail(`publish commands must reference packed/ tarballs, found: ${badPublish.join(" | ")}`);
+    }
+    const missingTagLogic = publishCommands.filter((cmd) => !cmd.includes("$TAG"));
+    if (missingTagLogic.length > 0) {
+      fail(
+        `publish commands must derive the dist-tag from the version, found: ${missingTagLogic.join(" | ")}`,
+      );
+    }
+    const tagBranches = (publishJob.match(/\[\[ "\$VERSION" == \*-beta\.\* \]\]/g) ?? []).length;
+    if (tagBranches !== RELEASE_ORDER.length) {
+      fail(
+        `expected ${RELEASE_ORDER.length} prerelease dist-tag branches (--tag next), found ${tagBranches}`,
+      );
     }
     if (
       (workflow.match(/^\s+id-token: write\b/gm) ?? []).length !== 1 ||

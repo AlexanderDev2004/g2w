@@ -135,8 +135,9 @@ jobs:
       # with `@g2w/*: workspace:*` unresolved (verified by inspection), which
       # npm refuses to publish — and must never be worked around. `pnpm -r
       # pack --pack-destination` produces the same rewritten, dependency-order
-      # tarballs the test:pack harness audits, so the published artifact is
-      # byte-identical to the audited one. Publish order (docs/release.md):
+      # tarballs use the same pnpm packing mechanism and rewritten package manifests
+      # validated by test:pack; byte-for-byte identity across separate packing
+      # runs is not guaranteed. Publish order (docs/release.md):
       # core first, the adapters/runtime, then the CLI that pins them.
       # --provenance mints the npm provenance attestation from the same OIDC
       # identity. No token is echoed; npm never prints credentials.

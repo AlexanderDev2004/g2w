@@ -1,10 +1,11 @@
+import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { afterEach, describe, expect, it } from "vitest";
-import { run } from "../src/cli.js";
+import { type GitCommandResult, type GitRunner, run } from "../src/cli.js";
 
 const packageDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const templateDir = path.join(packageDir, "template");
@@ -21,6 +22,19 @@ async function scratch(): Promise<string> {
   const dir = await mkdtemp(path.join(tmpdir(), "create-g2w-test-"));
   scratchDirs.push(dir);
   return dir;
+}
+
+/** Fake Git runner: records invocations, succeeds by default. */
+function fakeGit(result: Partial<GitCommandResult> = {}): {
+  calls: { args: string[]; cwd: string }[];
+  runner: GitRunner;
+} {
+  const calls: { args: string[]; cwd: string }[] = [];
+  const runner: GitRunner = (args, cwd) => {
+    calls.push({ args, cwd });
+    return { status: 0, ...result };
+  };
+  return { calls, runner };
 }
 
 function io() {
@@ -74,7 +88,7 @@ describe("create-g2w argument handling", () => {
   it("sanitizes spaces in the directory name into a valid package name", async () => {
     const dir = await scratch();
     const target = path.join(dir, "my game");
-    await run([target], io());
+    await run([target], io(), fakeGit().runner);
     const manifest = JSON.parse(await readGenerated(target, "package.json")) as { name: string };
     expect(manifest.name).toBe("my-game");
   });
@@ -85,7 +99,7 @@ describe("create-g2w generation", () => {
     const dir = await scratch();
     const target = path.join(dir, "my-game");
     const io_ = io();
-    const exitCode = await run([target], io_);
+    const exitCode = await run([target], io_, fakeGit().runner);
 
     expect(exitCode).toBe(0);
     // No template placeholder survives generation.
@@ -99,7 +113,7 @@ describe("create-g2w generation", () => {
   it("copies every template file present on disk", async () => {
     const dir = await scratch();
     const target = path.join(dir, "my-game");
-    await run([target], io());
+    await run([target], io(), fakeGit().runner);
 
     const { readdir } = await import("node:fs/promises");
     async function list(base: string, prefix = ""): Promise<string[]> {
@@ -124,7 +138,7 @@ describe("create-g2w generation", () => {
   it("pins the g2w and PixiJS dependency versions the template declares", async () => {
     const dir = await scratch();
     const target = path.join(dir, "my-game");
-    await run([target], io());
+    await run([target], io(), fakeGit().runner);
 
     const manifest = JSON.parse(await readGenerated(target, "package.json")) as {
       dependencies: Record<string, string>;
@@ -141,7 +155,7 @@ describe("create-g2w generation", () => {
   it("generates a self-consistent project layout", async () => {
     const dir = await scratch();
     const target = path.join(dir, "my-game");
-    await run([target], io());
+    await run([target], io(), fakeGit().runner);
 
     // The HTML entry references the real source entry.
     const html = await readGenerated(target, "index.html");
@@ -172,7 +186,7 @@ describe("create-g2w destination safety", () => {
     const target = path.join(dir, "occupied");
     await mkdir(target);
     await writeFile(path.join(target, "user-file.txt"), "keep me");
-    await run([target, "--force"], io());
+    await run([target, "--force"], io(), fakeGit().runner);
 
     expect(await readFile(path.join(target, "user-file.txt"), "utf8")).toBe("keep me");
     expect(existsSync(path.join(target, "package.json"))).toBe(true);
@@ -183,7 +197,7 @@ describe("create-g2w destination safety", () => {
     const target = path.join(dir, "empty");
     const { mkdir } = await import("node:fs/promises");
     await mkdir(target);
-    await expect(run([target], io())).resolves.toBe(0);
+    await expect(run([target], io(), fakeGit().runner)).resolves.toBe(0);
   });
 
   it("refuses a destination that exists as a file", async () => {
@@ -217,10 +231,148 @@ describe("create-g2w template hygiene", () => {
     }
   });
 
-  it("the CLI source never spawns child processes", async () => {
+  it("the CLI spawns no shell and invokes only git", async () => {
     const source = await readFile(path.join(packageDir, "src", "cli.ts"), "utf8");
-    expect(source).not.toMatch(/child_process/);
-    expect(source).not.toMatch(/\bspawn(Sync)?\(/);
+    // No shell command strings: Git runs through an explicit argv array only.
+    expect(source).not.toMatch(/shell:\s*true/);
     expect(source).not.toMatch(/\bexec(Sync)?\(/);
+    // The single subprocess is `git`, spawned with a literal executable name.
+    expect(source.match(/spawnSync\(/g)).toHaveLength(1);
+    expect(source).toContain('spawnSync("git"');
   });
+
+  it("the generated .gitignore covers dependencies, build output, caches, and env files", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    await run([target], io(), fakeGit().runner);
+
+    const gitignore = await readGenerated(target, ".gitignore");
+    expect(gitignore).toContain("node_modules/");
+    expect(gitignore).toContain("dist/");
+    expect(gitignore).toContain(".vite/");
+    expect(gitignore).toContain(".env");
+    // The manifest itself must stay tracked.
+    expect(gitignore).not.toMatch(/^package\.json$/m);
+  });
+});
+
+describe("create-g2w git initialization", () => {
+  it("runs git init with explicit arguments in the destination directory", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    const fake = fakeGit();
+    const io_ = io();
+
+    await expect(run([target], io_, fake.runner)).resolves.toBe(0);
+    expect(fake.calls).toEqual([{ args: ["init"], cwd: target }]);
+    expect(io_.logs.join("\n")).toContain("Initialized an empty Git repository");
+    // Local-only: never a remote, commit, or push.
+    expect(fake.calls[0]?.args).toEqual(["init"]);
+  });
+
+  it("verifies the Git result before reporting overall success", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    const io_ = io();
+
+    await expect(run([target], io_, fakeGit().runner)).resolves.toBe(0);
+    const log = io_.logs.join("\n");
+    // The Git outcome is decided (and logged) before the success report.
+    expect(log.indexOf("Initialized an empty Git repository")).toBeGreaterThan(-1);
+    expect(log.indexOf("Created a g2w project")).toBeGreaterThan(
+      log.indexOf("Initialized an empty Git repository"),
+    );
+    expect(existsSync(path.join(target, "package.json"))).toBe(true);
+  });
+
+  it("skips initialization when the destination already contains a .git directory", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    await mkdir(path.join(target, ".git"), { recursive: true });
+    await writeFile(path.join(target, ".git", "HEAD"), "ref: refs/heads/main\n");
+    const fake = fakeGit();
+    const io_ = io();
+
+    // An existing .git makes the destination non-empty, so generation
+    // requires --force — which must leave the repository metadata untouched.
+    await expect(run([target, "--force"], io_, fake.runner)).resolves.toBe(0);
+    expect(fake.calls).toEqual([]);
+    expect(io_.logs.join("\n")).toContain("Skipped Git initialization");
+    expect(await readFile(path.join(target, ".git", "HEAD"), "utf8")).toBe(
+      "ref: refs/heads/main\n",
+    );
+  });
+
+  it("recognizes a .git file (worktree metadata) as an existing repository", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    await mkdir(target);
+    await writeFile(path.join(target, ".git"), "gitdir: ../elsewhere/.git/worktrees/my-game\n");
+    const fake = fakeGit();
+    const io_ = io();
+
+    // An existing .git makes the destination non-empty, so generation
+    // requires --force — which must leave the metadata file untouched.
+    await expect(run([target, "--force"], io_, fake.runner)).resolves.toBe(0);
+    expect(fake.calls).toEqual([]);
+    expect(io_.logs.join("\n")).toContain("Skipped Git initialization");
+    expect(await readFile(path.join(target, ".git"), "utf8")).toContain("gitdir: ../elsewhere");
+  });
+
+  it("warns without failing when Git is not installed", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    const io_ = io();
+
+    await expect(
+      run([target], io_, fakeGit({ status: null, errorCode: "ENOENT" }).runner),
+    ).resolves.toBe(0);
+    // The project itself was generated; only the Git step was skipped.
+    expect(io_.logs.join("\n")).toContain("no Git executable was found on PATH");
+    expect(existsSync(path.join(target, "package.json"))).toBe(true);
+  });
+
+  it("warns without failing when git init exits nonzero", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    const io_ = io();
+
+    await expect(
+      run([target], io_, fakeGit({ status: 128, stderr: "fatal: cannot mkdir" }).runner),
+    ).resolves.toBe(0);
+    const log = io_.logs.join("\n");
+    expect(log).toContain("Git initialization failed");
+    expect(log).toContain("fatal: cannot mkdir");
+    // Generated files remain after a Git failure.
+    expect(existsSync(path.join(target, "package.json"))).toBe(true);
+  });
+
+  it("passes destination paths containing spaces to Git unchanged", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my game dir!");
+    const fake = fakeGit();
+
+    await expect(run([target, "--name", "my-game"], io(), fake.runner)).resolves.toBe(0);
+    expect(fake.calls).toEqual([{ args: ["init"], cwd: target }]);
+  });
+
+  const gitAvailable = spawnSync("git", ["--version"], { stdio: "ignore" }).status === 0;
+  it.skipIf(!gitAvailable)(
+    "scaffolds a working local Git repository (no remote, no commit)",
+    async () => {
+      const dir = await scratch();
+      const target = path.join(dir, "my-game");
+      const io_ = io();
+
+      await expect(run([target], io_)).resolves.toBe(0);
+      expect(existsSync(path.join(target, ".git"))).toBe(true);
+
+      const git = (args: string[]) => spawnSync("git", args, { cwd: target, encoding: "utf8" });
+      // `git status` works in the generated project.
+      expect(git(["status", "--porcelain"]).status).toBe(0);
+      // Nothing was committed and no remote was configured.
+      expect(git(["rev-parse", "HEAD"]).status).not.toBe(0);
+      expect(git(["remote"]).stdout?.trim()).toBe("");
+    },
+  );
 });

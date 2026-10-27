@@ -123,7 +123,7 @@ pnpm install
 pnpm dev
 ```
 
-The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts a target directory, refuses to overwrite existing files without `--force`, and prints next steps. Validated end to end (install, typecheck, unit tests, production build, browser smoke) against locally packed `@g2w/*` tarballs with `node scripts/smoke-create-g2w.mjs` — the `@g2w/*` packages are **not published to npm yet** (ROADMAP R10), so until then a generated project resolves them from packed tarballs, and `pnpm create g2w` works only after publishing. From a clone, the CLI can be run directly: `node packages/create-g2w/dist/cli.js my-game` (after `pnpm build`).
+The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts a target directory, refuses to overwrite existing files without `--force`, and prints next steps. After generating, it initializes a local Git repository in the project (plain `git init`; no remote, no initial commit, no push). Initialization is skipped with a warning when Git is not installed or the destination already contains Git metadata, and it never fails the scaffold — the generated files always remain. Requires Node >= 22 and, for the Git step, a Git executable on `PATH`. Validated end to end (install, typecheck, unit tests, production build, browser smoke) against locally packed `@g2w/*` tarballs with `node scripts/smoke-create-g2w.mjs` — the `@g2w/*` packages are **not published to npm yet** (ROADMAP R10), so until then a generated project resolves them from packed tarballs, and `pnpm create g2w` works only after publishing. From a clone, the CLI can be run directly: `node packages/create-g2w/dist/cli.js my-game` (after `pnpm build`).
 
 ## Development commands
 

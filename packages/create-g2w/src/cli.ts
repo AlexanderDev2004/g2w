@@ -4,9 +4,11 @@
  *
  * A zero-dependency Node CLI (Node >= 22): it copies the bundled template
  * directory into the destination, substituting the project name. It never
- * shells out, never prompts, and never deletes user files. All behavior is
- * in `run()` so the CLI is deterministic and unit-testable.
+ * prompts and never deletes user files; its only subprocess is a local
+ * `git init` in the freshly generated directory (see {@link defaultGitRunner}).
+ * All behavior is in `run()` so the CLI is deterministic and unit-testable.
  */
+import { spawnSync } from "node:child_process";
 import { mkdir, readdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -32,6 +34,10 @@ After generation:
   cd <target-directory>
   pnpm install
   pnpm dev
+
+A local Git repository is initialized in the generated project (no remote,
+no initial commit). Initialization is skipped with a warning when Git is
+not installed or the destination already contains Git metadata.
 `;
 
 /** An error with a user-facing message; `run()` reports it and exits 1. */
@@ -123,6 +129,43 @@ function parseOptions(argv: string[]): Options {
 
 class HelpRequested extends Error {}
 
+/** Outcome of one injected Git invocation. */
+export interface GitCommandResult {
+  /** Process exit code, or null when the executable could not be spawned. */
+  status: number | null;
+  /** Spawn-failure code, e.g. "ENOENT" when Git is not installed. */
+  errorCode?: string;
+  /** Captured stderr, used to explain a nonzero exit to the user. */
+  stderr?: string;
+}
+
+/**
+ * Runs one Git invocation with explicit arguments in the given working
+ * directory. Injectable so tests never need a real Git installation.
+ */
+export type GitRunner = (args: string[], cwd: string) => GitCommandResult;
+
+/**
+ * The real Git runner: an explicit argv array (the destination is the `cwd`,
+ * never part of a command string) with no shell, so no user-controlled path
+ * or project name is ever interpolated into a shell command.
+ */
+function defaultGitRunner(args: string[], cwd: string): GitCommandResult {
+  const result = spawnSync("git", args, {
+    cwd,
+    stdio: ["ignore", "pipe", "pipe"],
+    encoding: "utf8",
+    windowsHide: true,
+  });
+  return {
+    status: result.status,
+    ...(result.error === undefined
+      ? {}
+      : { errorCode: "code" in result.error ? String(result.error.code) : undefined }),
+    ...(result.stderr === undefined || result.stderr === "" ? {} : { stderr: result.stderr }),
+  };
+}
+
 /** Walks the template tree up-front and returns sorted relative file paths. */
 async function listTemplateFiles(): Promise<string[]> {
   const files: string[] = [];
@@ -144,7 +187,11 @@ async function listTemplateFiles(): Promise<string[]> {
  * Scaffolds a project. Throws ScaffoldError on any expected failure
  * (invalid arguments, unsafe destination, missing template file).
  */
-export async function run(argv: string[], io: RunIO): Promise<number> {
+export async function run(
+  argv: string[],
+  io: RunIO,
+  git: GitRunner = defaultGitRunner,
+): Promise<number> {
   let options: Options;
   try {
     options = parseOptions(argv);
@@ -192,6 +239,8 @@ export async function run(argv: string[], io: RunIO): Promise<number> {
     await writeFile(target, contents.replaceAll(PROJECT_NAME_VARIABLE, projectName));
   }
 
+  await initializeGitRepository(destination, git, io);
+
   io.log(`Created a g2w project in ${destination} (package name: ${projectName}).`);
   io.log("");
   io.log("Next steps:");
@@ -201,6 +250,50 @@ export async function run(argv: string[], io: RunIO): Promise<number> {
   io.log("");
   io.log("Then open the printed localhost URL. Controls: WASD / arrow keys.");
   return 0;
+}
+
+/**
+ * Initializes a local Git repository in a freshly generated project: plain
+ * `git init` in the destination — never a remote, an initial commit, or a
+ * push, and never a shell command string. Every failure mode (Git missing,
+ * nonzero exit) is a warning: the project itself was generated successfully,
+ * so scaffolding still exits 0. An existing `.git` (directory or worktree
+ * file) is left untouched and reported as skipped.
+ */
+async function initializeGitRepository(
+  destination: string,
+  git: GitRunner,
+  io: RunIO,
+): Promise<void> {
+  let gitMetadataStat = null;
+  try {
+    gitMetadataStat = await stat(path.join(destination, ".git"));
+  } catch {
+    // No Git metadata: the normal case for a fresh project.
+  }
+  if (gitMetadataStat !== null) {
+    io.log(
+      "Skipped Git initialization: the destination already contains Git metadata, which was left untouched.",
+    );
+    return;
+  }
+  const result = git(["init"], destination);
+  if (result.errorCode === "ENOENT") {
+    io.log(
+      'Generated the project, but skipped Git initialization: no Git executable was found on PATH. Install Git and run "git init" in the project directory.',
+    );
+    return;
+  }
+  if (result.status !== 0) {
+    const detail = result.stderr?.trim();
+    io.log(
+      `Generated the project, but Git initialization failed (exit ${result.status ?? "unknown"}).${
+        detail === undefined || detail === "" ? "" : ` Git said: ${detail}`
+      } Run "git init" in the project directory to retry manually.`,
+    );
+    return;
+  }
+  io.log("Initialized an empty Git repository in the project (no remote, no initial commit).");
 }
 
 /** CLI entry point: runs and maps failures to exit codes. */

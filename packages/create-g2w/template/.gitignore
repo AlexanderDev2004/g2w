@@ -1,4 +1,14 @@
 node_modules/
 dist/
+coverage/
 *.tsbuildinfo
 .vite/
+
+# Local environment files
+.env
+.env.*
+!.env.example
+
+# OS artifacts
+.DS_Store
+Thumbs.db

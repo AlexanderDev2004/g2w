@@ -168,7 +168,7 @@ const index = [
 
 <script type="application/json" id="search-index" set:html={JSON.stringify(index)} />
 
-<style>
+<style is:global>
   .search-modal {
     position: fixed;
     inset: 0;
@@ -260,13 +260,16 @@ const index = [
     grid-area: title;
     font-family: var(--mono);
     font-size: 14px;
-    font-weight: 600;
+    font-weight: 700;
     color: var(--ink);
   }
   .search-desc {
     grid-area: desc;
     font-size: 12.5px;
     color: var(--ink-60);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
   .search-empty {
     padding: 18px 12px;

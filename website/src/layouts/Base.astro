@@ -64,6 +64,24 @@ const site = "https://g2w.alexanderar.com";
           >
             GitHub
           </a>
+          <button
+            class="nav-toggle"
+            type="button"
+            aria-expanded="false"
+            aria-controls="site-menu"
+            aria-label="Toggle navigation menu"
+          >
+            <span class="nav-toggle-bar"></span>
+            <span class="nav-toggle-bar"></span>
+            <span class="nav-toggle-bar"></span>
+          </button>
+        </div>
+        <div class="navbar-links" id="site-menu">
+          <a href="/docs/introduction">Docs</a>
+          <a href="/playground">Playground</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">Roadmap</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md">Architecture</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/CONTRIBUTING.md">Contributing</a>
         </div>
       </div>
     </nav>
@@ -99,5 +117,19 @@ const site = "https://g2w.alexanderar.com";
         </div>
       </div>
     </footer>
+    <script>
+      const nav = document.querySelector(".navbar");
+      const toggle = document.querySelector(".nav-toggle");
+      toggle?.addEventListener("click", () => {
+        const open = nav?.classList.toggle("menu-open") ?? false;
+        toggle?.setAttribute("aria-expanded", String(open));
+      });
+      document.querySelectorAll(".navbar-links a").forEach((link) => {
+        link.addEventListener("click", () => {
+          nav?.classList.remove("menu-open");
+          toggle?.setAttribute("aria-expanded", "false");
+        });
+      });
+    </script>
   </body>
 </html>

@@ -1,0 +1,142 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const modelCode = [
+  `<span class="kw">import</span> { Sprite2D, Transform2D } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  ``,
+  `<span class="kw">const</span> logo = <span class="kw">new</span> <span class="type">Sprite2D</span>({`,
+  `  texture,                    <span class="cm">// typed by the caller</span>`,
+  `  transform: <span class="kw">new</span> <span class="type">Transform2D</span>({ x: <span class="num">16</span>, y: <span class="num">32</span> }),`,
+  `  anchor: { x: <span class="num">0.5</span>, y: <span class="num">0.5</span> },  <span class="cm">// rotate around center</span>`,
+  `  zIndex: <span class="num">2</span>,`,
+  `});`,
+  ``,
+  `<span class="cm">// plain mutable data — no observers, no proxies</span>`,
+  `logo.transform.<span class="fn">rotation</span> += deltaTime;`,
+  `logo.alpha = <span class="num">0.8</span>;`,
+].join("\n");
+
+const viewCode = [
+  `<span class="kw">import</span> { createSpriteView } <span class="kw">from</span> <span class="str">"@g2w/renderer-pixi"</span>;`,
+  ``,
+  `<span class="kw">const</span> view = <span class="fn">createSpriteView</span>({ sprite: logo, renderer });`,
+  ``,
+  `<span class="cm">// once per frame, after the model changes:</span>`,
+  `<span class="fn">update</span>(deltaTime) {`,
+  `  <span class="cm">// ...mutate logo.transform here</span>`,
+  `  view.<span class="fn">sync</span>();`,
+  `},`,
+  ``,
+  `<span class="cm">// teardown — the texture survives, only the display object dies</span>`,
+  `view.<span class="fn">dispose</span>();`,
+].join("\n");
+
+const sharedCode = [
+  `<span class="kw">const</span> bossTransform = <span class="kw">new</span> <span class="type">Transform2D</span>({ x: <span class="num">320</span>, y: <span class="num">180</span> });`,
+  `<span class="kw">const</span> bossBody = <span class="kw">new</span> <span class="type">Sprite2D</span>({`,
+  `  texture: bodyTex, transform: bossTransform,`,
+  `});`,
+  `<span class="kw">const</span> bossShadow = <span class="kw">new</span> <span class="type">Sprite2D</span>({`,
+  `  texture: shadowTex, transform: bossTransform, alpha: <span class="num">0.4</span>,`,
+  `});`,
+  ``,
+  `<span class="cm">// one mutation moves both sprites</span>`,
+  `bossTransform.x += <span class="num">40</span> * deltaTime;`,
+].join("\n");
+---
+
+<Base title="Sprites & Transforms · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="sprites" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / core-concepts / sprites-and-transforms</div>
+      <h1>Sprites &amp; Transforms</h1>
+      <p>
+        <code>Sprite2D</code> and <code>Transform2D</code> in <code>@g2w/core</code>
+        are a minimal, renderer-independent sprite model: a typed texture handle, a
+        transform, a normalized anchor, and the visual properties games need.
+        Core never inspects or destroys the texture — it is a generic
+        <code>TTexture</code> the caller supplies, typically from a renderer's asset
+        API.
+      </p>
+
+      <h2 id="model">The model is plain mutable data</h2>
+      <p>
+        <code>Transform2D</code> holds position (logical pixels), rotation
+        (<b>radians</b> — clockwise in PixiJS screen space, because y points down),
+        and scale multipliers. Properties are plain mutable numbers: gameplay code
+        mutates them, and nothing touches the renderer until you say so:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/game.ts</span></div>
+        <pre><code set:html={modelCode} /></pre>
+      </div>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Anchor</span>
+        <span>
+          The anchor is a property of the <b>sprite</b>, not the transform:
+          transforms are shared between sprites and game objects, and a game object
+          has no visual. <code>Anchor2D.set()</code> is the only mutation path and
+          rejects out-of-range values instead of clamping.
+        </span>
+      </div>
+
+      <h2 id="view">Project it with a view</h2>
+      <p>
+        <code>createSpriteView</code> from <code>@g2w/renderer-pixi</code> attaches a
+        PixiJS <code>Sprite</code> to the stage as a pure projection of your model.
+        There is no ticker, subscription, or second loop — you call
+        <code>sync()</code> once per frame, after the model changes:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>inside a scene</span></div>
+        <pre><code set:html={viewCode} /></pre>
+      </div>
+      <p>
+        Ownership splits cleanly: the <b>model</b> is yours, the <b>view's</b> display
+        object belongs to whoever created it. <code>dispose()</code> removes and
+        destroys the display object — never the texture — and never touches the
+        stage or other views. Disposal is idempotent. Each call to
+        <code>createSpriteView</code> makes one new display object, so dispose a view
+        before creating another for the same model.
+      </p>
+
+      <h2 id="shared">Share one transform between sprites</h2>
+      <p>
+        Supplying an existing <code>Transform2D</code> makes the sprite reference
+        your instance instead of creating its own — several sprites can be driven by
+        one transform:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/boss.ts</span></div>
+        <pre><code set:html={sharedCode} /></pre>
+      </div>
+
+      <h2>Scope</h2>
+      <p>
+        Intentionally unsupported: parent/child hierarchies, tint, blend modes,
+        animation timelines, and entity components — roadmap items, not hidden APIs.
+      </p>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See <a href="/docs/assets">Assets</a> to load the textures these sprites
+        render, or
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the renderer contract in full.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Sprites &amp; Transforms</a>
+      <a href="#model">The model</a>
+      <a href="#view">Project it with a view</a>
+      <a href="#shared">Shared transforms</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

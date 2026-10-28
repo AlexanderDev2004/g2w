@@ -1,0 +1,164 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const wireCode = [
+  `<span class="kw">const</span> input = <span class="kw">new</span> <span class="type">InputState</span>();`,
+  `<span class="kw">const</span> domInput = <span class="kw">new</span> <span class="type">DomInput</span>(input, {`,
+  `  canvas,`,
+  `  keyTarget: window,`,
+  `  blurTarget: window,`,
+  `  <span class="cm">// pointer + key coords in the game's logical space</span>`,
+  `  logicalSize: { width: VIEW_WIDTH, height: VIEW_HEIGHT },`,
+  `});`,
+  ``,
+  `<span class="cm">// in G2WGame's onUpdate — exactly one boundary per frame:</span>`,
+  `<span class="fn">onUpdate</span>: (deltaTime) => {`,
+  `  scenes.<span class="fn">update</span>(deltaTime);`,
+  `  input.<span class="fn">endFrame</span>(); <span class="cm">// after every consumer has read the state</span>`,
+  `},`,
+].join("\n");
+
+const queryCode = [
+  `<span class="fn">update</span>(deltaTime) {`,
+  `  <span class="cm">// held state is continuous</span>`,
+  `  <span class="kw">if</span> (input.<span class="fn">isKeyDown</span>(<span class="str">"KeyD"</span>)) player.<span class="fn">moveRight</span>(deltaTime);`,
+  ``,
+  `  <span class="cm">// per-frame edges — true from the event until endFrame()</span>`,
+  `  <span class="kw">if</span> (input.<span class="fn">wasKeyPressed</span>(<span class="str">"Enter"</span>)) scenes.<span class="fn">goTo</span>(<span class="str">"gameplay"</span>);`,
+  `  <span class="kw">if</span> (input.<span class="fn">wasButtonPressed</span>(<span class="num">0</span>)) <span class="fn">shoot</span>();`,
+  ``,
+  `  <span class="cm">// pointer position in canvas-relative coordinates</span>`,
+  `  crosshair.<span class="fn">moveTo</span>(input.<span class="fn">pointerX</span>, input.<span class="fn">pointerY</span>);`,
+  `}`,
+].join("\n");
+
+const touchCode = [
+  `<span class="kw">for</span> (<span class="kw">const</span> id <span class="kw">of</span> input.<span class="fn">activeTouchIds</span>()) {`,
+  `  <span class="kw">const</span> pos = input.<span class="fn">getTouchPosition</span>(id)!;`,
+  `  <span class="kw">if</span> (input.<span class="fn">wasTouchStarted</span>(id)) <span class="fn">spawnStick</span>(id, pos);`,
+  `  <span class="kw">if</span> (input.<span class="fn">wasTouchCancelled</span>(id)) <span class="fn">releaseStick</span>(id); <span class="cm">// system gesture</span>`,
+  `}`,
+].join("\n");
+
+const gamepadCode = [
+  `<span class="kw">import</span> { GamepadState } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  `<span class="kw">import</span> { GamepadInput } <span class="kw">from</span> <span class="str">"@g2w/input-gamepad"</span>;`,
+  ``,
+  `<span class="kw">const</span> gamepad = <span class="kw">new</span> <span class="type">GamepadInput</span>(<span class="kw">new</span> <span class="type">GamepadState</span>());`,
+  ``,
+  `<span class="cm">// the host drives sampling — once per frame, before reads</span>`,
+  `gamepad.<span class="fn">poll</span>();`,
+  `<span class="kw">if</span> (gamepad.<span class="fn">isButtonDown</span>(<span class="num">0</span>)) <span class="fn">jump</span>();`,
+].join("\n");
+---
+
+<Base title="Input · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="input" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / core-concepts / input</div>
+      <h1>Input</h1>
+      <p>
+        <code>InputState</code> in <code>@g2w/core</code> is a plain, DOM-free state
+        machine. Browser adapters feed it normalized events through
+        <code>handle*</code> methods; game and scene code read it through query
+        methods. It holds no references to <code>window</code>, <code>document</code>,
+        DOM events, or any renderer — which is exactly why unit tests can drive it
+        deterministically without a browser.
+      </p>
+
+      <h2 id="wire">Wire the adapter</h2>
+      <p>
+        <code>DomInput</code> from <code>@g2w/input-dom</code> adapts real browser
+        events — keyboard, pointer, and multi-touch through Pointer Events — onto
+        your <code>InputState</code>. All DOM handling lives in the adapter, never
+        in game code:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={wireCode} /></pre>
+      </div>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Rule</span>
+        <span>
+          Call <code>input.endFrame()</code> exactly once per game frame, after every
+          consumer has read the state. It resets all pressed/released/touch edges at
+          one explicit boundary; held (<code>down</code>) state is never affected.
+        </span>
+      </div>
+
+      <h2 id="read">Read it in game code</h2>
+      <p>
+        <b>Held</b> state is continuous: <code>isKeyDown</code> /
+        <code>isButtonDown</code> report whether the input is currently down.
+        <b>Pressed/released</b> are per-frame edges, set by events and reset together
+        at <code>endFrame()</code>:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>inside a scene's update()</span></div>
+        <pre><code set:html={queryCode} /></pre>
+      </div>
+      <p>
+        Two details worth knowing: a quick press-and-release between two
+        <code>endFrame</code> calls is <b>not lost</b> — the key reports both edges in
+        the same frame while <code>isKeyDown</code> is already <code>false</code>
+        again. And OS key repeat while a key is held creates no extra press edges.
+      </p>
+
+      <h2 id="policies">Focus and pointer policies</h2>
+      <p>
+        Focus loss releases every held key and button with the corresponding released
+        edges, so game logic observes the same release it would have seen from real
+        events. Pointer leaving the canvas releases held buttons the same way — the
+        matching <code>pointerup</code> may have happened off-canvas. The last pointer
+        position is kept in both cases.
+      </p>
+
+      <h2 id="touch">Multi-touch</h2>
+      <p>
+        Beyond the single-pointer view, adapters feed individual touch contacts keyed
+        by a stable id (the DOM <code>pointerId</code>). Several simultaneous contacts
+        are supported, and cancellation has its own edge so you can distinguish an
+        intentional lift from the browser claiming the gesture for scrolling:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>touch contacts</span></div>
+        <pre><code set:html={touchCode} /></pre>
+      </div>
+
+      <h2 id="gamepad">Gamepads</h2>
+      <p>
+        <code>@g2w/input-gamepad</code> adapts the Gamepad API onto the DOM-free
+        <code>GamepadState</code> with an injectable polling source. Unlike DOM
+        events, gamepads are polled: the host drives sampling with
+        <code>poll()</code>, once per frame, before any read:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={gamepadCode} /></pre>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See <a href="/docs/audio">Audio</a> for sound that follows the same
+        ownership discipline, or
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the full adapter boundary rules.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Input</a>
+      <a href="#wire">Wire the adapter</a>
+      <a href="#read">Read it in game code</a>
+      <a href="#policies">Focus &amp; pointer policies</a>
+      <a href="#touch">Multi-touch</a>
+      <a href="#gamepad">Gamepads</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

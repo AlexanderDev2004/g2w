@@ -1,0 +1,127 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const basicCode = [
+  `<span class="kw">import</span> { AudioManager } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  `<span class="kw">import</span> { WebAudioBackend } <span class="kw">from</span> <span class="str">"@g2w/audio-web"</span>;`,
+  ``,
+  `<span class="kw">const</span> audio = <span class="kw">new</span> <span class="type">AudioManager</span>({`,
+  `  backend: <span class="kw">new</span> <span class="type">WebAudioBackend</span>(),`,
+  `});`,
+  ``,
+  `<span class="kw">const</span> laser = <span class="kw">await</span> audio.<span class="fn">load</span>(<span class="str">"laser.wav"</span>);`,
+  `<span class="kw">const</span> shot = <span class="kw">await</span> audio.<span class="fn">play</span>(<span class="str">"laser.wav"</span>, { volume: <span class="num">0.5</span> });`,
+  ``,
+  `<span class="cm">// a playback is a handle you may keep and stop early</span>`,
+  `shot.<span class="fn">stop</span>(); <span class="cm">// idempotent: stopping twice is a no-op</span>`,
+  ``,
+  `<span class="cm">// or stop everything the manager started</span>`,
+  `audio.<span class="fn">stopAll</span>();`,
+].join("\n");
+
+const loopCode = [
+  `<span class="kw">const</span> music = <span class="kw">await</span> audio.<span class="fn">play</span>(<span class="str">"theme.ogg"</span>, {`,
+  `  loop: <span class="kw">true</span>, volume: <span class="num">0.4</span>,`,
+  `});`,
+  ``,
+  `<span class="cm">// leaving the gameplay scene:</span>`,
+  `<span class="fn">exit</span>() { music.<span class="fn">stop</span>(); },`,
+].join("\n");
+
+const wireCode = [
+  `<span class="kw">const</span> audio = <span class="kw">new</span> <span class="type">AudioManager</span>({`,
+  `  backend: <span class="kw">new</span> <span class="type">WebAudioBackend</span>(),`,
+  `});`,
+  ``,
+  `<span class="cm">// after game.init(): audio joins the LIFO finalizer chain,</span>`,
+  `<span class="cm">// releasing playbacks + AudioContext before the renderer</span>`,
+  `game.<span class="fn">addFinalizer</span>(() => audio.<span class="fn">dispose</span>());`,
+].join("\n");
+---
+
+<Base title="Audio · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="audio" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / core-concepts / audio</div>
+      <h1>Audio</h1>
+      <p>
+        <code>AudioManager</code> in <code>@g2w/core</code> follows the same pattern
+        as the asset system: an injected backend loads sounds, requests are cached
+        and deduplicated, and failed loads are retryable. Core never interprets audio
+        data — everything browser-specific lives behind the <code>AudioBackend</code>
+        contract.
+      </p>
+
+      <h2 id="basic">Load and play</h2>
+      <p>
+        <code>play(key, options?)</code> loads the sound (usually a cache hit),
+        starts one playback, and returns a <code>SoundPlayback</code> handle. Invalid
+        options — a non-finite or negative <code>volume</code> — throw
+        <code>AudioError</code> before any backend call:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/audio.ts</span></div>
+        <pre><code set:html={basicCode} /></pre>
+      </div>
+      <p>
+        Repeated and concurrent <code>load(key)</code> requests share one load and
+        one <code>Sound</code> value. If the backend cannot start playback — for
+        example a browser autoplay policy holds the context suspended — the
+        rejection propagates unchanged; it is never silently swallowed.
+      </p>
+
+      <h2 id="looping">Looping music, scene-scoped</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>inside a scene</span></div>
+        <pre><code set:html={loopCode} /></pre>
+      </div>
+
+      <h2 id="ownership">Ownership rules</h2>
+      <p>
+        The manager owns <b>playback lifetimes</b>, never the sounds themselves.
+        <code>Sound</code> values are caller/backend-owned — decoded audio may be
+        shared freely, even across managers. <code>dispose()</code> stops all active
+        playbacks, clears the cache, and calls <code>backend.dispose()</code> once.
+        It is terminal and idempotent: <code>load</code> and <code>play</code> after
+        disposal throw <code>AudioError</code>.
+      </p>
+
+      <h2 id="wire">Wire disposal into the game</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={wireCode} /></pre>
+      </div>
+
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Scope</span>
+        <span>
+          Intentionally unsupported: mixers, spatial/3D audio, adaptive music, and
+          streaming. Audio is fire-and-forget from the caller's perspective — no
+          second frame loop, no hidden timer.
+        </span>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See <a href="/docs/scenes">Scenes</a> for where to trigger sounds from game
+        state, or
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the backend contract in full.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Audio</a>
+      <a href="#basic">Load and play</a>
+      <a href="#looping">Looping music</a>
+      <a href="#ownership">Ownership rules</a>
+      <a href="#wire">Wire disposal into the game</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

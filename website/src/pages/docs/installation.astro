@@ -1,0 +1,132 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const scaffoldCode = [
+  `<span class="cm"># scaffold a new game project (after the npm release lands)</span>`,
+  `<span class="fn">pnpm</span> create g2w my-game`,
+  ``,
+  `<span class="kw">cd</span> my-game`,
+  `<span class="fn">pnpm</span> install`,
+  `<span class="fn">pnpm</span> dev`,
+].join("\n");
+
+const addCode = [
+  `<span class="fn">pnpm</span> add @g2w/core @g2w/runtime @g2w/renderer-pixi @g2w/input-dom`,
+  `<span class="fn">pnpm</span> add pixi.js <span class="cm"># renderer-pixi peer: PixiJS 8</span>`,
+].join("\n");
+
+const tarballCode = [
+  `<span class="cm"># from the monorepo root: build + pack every @g2w/* package</span>`,
+  `<span class="fn">pnpm</span> build`,
+  `<span class="fn">pnpm</span> --filter <span class="str">"./packages/*"</span> pack`,
+].join("\n");
+
+const treeCode = [
+  `my-game/`,
+  `├── index.html            <span class="cm"># #game canvas + #error box</span>`,
+  `├── package.json          <span class="cm"># dev / build / test scripts</span>`,
+  `├── tsconfig.json`,
+  `├── src/`,
+  `│   ├── main.ts           <span class="cm"># composition root</span>`,
+  `│   └── scenes/`,
+  `│       └── play-scene.ts <span class="cm"># pure game logic</span>`,
+  `└── test/`,
+  `    └── play-scene.test.ts <span class="cm"># deterministic, no browser</span>`,
+].join("\n");
+---
+
+<Base title="Installation · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="installation" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / getting-started / installation</div>
+      <h1>Installation</h1>
+      <p>
+        g2w is a set of small npm packages composed at the application boundary. The
+        fastest path is the <code>create-g2w</code> CLI, which scaffolds a complete
+        TypeScript + Vite game project from a bundled template.
+      </p>
+
+      <h2 id="requirements">Requirements</h2>
+      <p>
+        <b>Node.js ≥ 22</b> and a package manager. Every g2w package is ESM-only with
+        <code>NodeNext</code> resolution, and the scaffolded project uses Vite for dev
+        serving and bundling. pnpm is recommended but npm, yarn, and bun all work.
+      </p>
+
+      <h2 id="scaffold">Scaffold with create-g2w</h2>
+      <p>
+        The CLI never prompts and runs no shell commands; its only subprocess is a
+        local <code>git init</code> in the generated directory (skipped when Git is
+        missing or the destination already has Git metadata).
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>shell</span></div>
+        <pre><code set:html={scaffoldCode} /></pre>
+      </div>
+      <p>
+        The generated project ships with a playable scene — a square you steer with
+        WASD or the arrow keys — wired through <code>G2WGame</code>, a
+        <code>SceneManager</code>, and a unit-tested movement module:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>project structure</span></div>
+        <pre><code set:html={treeCode} /></pre>
+      </div>
+
+      <h2 id="manual">Manual setup</h2>
+      <p>
+        Prefer to wire things yourself? Install the packages you need and follow
+        <a href="/docs/your-first-game">Your First Game</a>:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>shell</span></div>
+        <pre><code set:html={addCode} /></pre>
+      </div>
+      <p>
+        <code>@g2w/core</code> is the only package with zero runtime dependencies.
+        <code>@g2w/renderer-pixi</code> adapts PixiJS 8 to the renderer contract, and
+        <code>@g2w/runtime</code> adds the Effect-based <code>G2WGame</code>
+        lifecycle. Add <code>@g2w/input-gamepad</code> for gamepads,
+        <code>@g2w/audio-web</code> for sound, and <code>@g2w/devtools</code> for the
+        read-only dev overlay.
+      </p>
+
+      <h2>Honest status</h2>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Status</span>
+        <span>
+          <b>The @g2w/* packages are not published to npm yet.</b> Until the release
+          lands (Roadmap R10), <code>pnpm create g2w</code> resolves only from packed
+          tarballs. Clone the
+          <a href="https://github.com/AlexanderDev2004/g2w">monorepo</a>, build, and
+          pack the packages yourself:
+        </span>
+      </div>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>shell</span></div>
+        <pre><code set:html={tarballCode} /></pre>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        Head to <a href="/docs/your-first-game">Your First Game</a> to walk through
+        the scaffolded project line by line, or read the
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/docs/architecture.md"
+          >architecture notes</a
+        > for the boundary rules behind the package split.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Installation</a>
+      <a href="#requirements">Requirements</a>
+      <a href="#scaffold">Scaffold with create-g2w</a>
+      <a href="#manual">Manual setup</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

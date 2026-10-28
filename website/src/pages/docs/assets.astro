@@ -1,0 +1,141 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const basicCode = [
+  `<span class="kw">import</span> { AssetManager } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  ``,
+  `<span class="kw">const</span> textures = <span class="kw">new</span> <span class="type">AssetManager</span>&lt;<span class="type">Texture</span>&gt;({`,
+  `  load: (url) => <span class="fn">pixiAssetsLoad</span>(url),`,
+  `  disposeAsset: (texture) => texture.<span class="fn">destroy</span>(<span class="kw">true</span>),`,
+  `});`,
+  ``,
+  `<span class="kw">const</span> logo = <span class="kw">await</span> textures.<span class="fn">load</span>(<span class="str">"logo.png"</span>);`,
+].join("\n");
+
+const dedupeCode = [
+  `<span class="kw">const</span> [a, b] = <span class="kw">await</span> <span class="type">Promise</span>.<span class="fn">all</span>([`,
+  `  textures.<span class="fn">load</span>(<span class="str">"logo.png"</span>),`,
+  `  textures.<span class="fn">load</span>(<span class="str">"logo.png"</span>),`,
+  `]);`,
+  `<span class="cm">// one load, one shared texture instance</span>`,
+].join("\n");
+
+const pixiCode = [
+  `<span class="kw">import</span> { createTextureAssetManager } <span class="kw">from</span> <span class="str">"@g2w/renderer-pixi"</span>;`,
+  ``,
+  `<span class="kw">const</span> assets = <span class="fn">createTextureAssetManager</span>();`,
+  `<span class="kw">const</span> logo = <span class="kw">await</span> assets.<span class="fn">load</span>(<span class="str">"assets/logo.png"</span>);`,
+  ``,
+  `<span class="cm">// ...later, during teardown:</span>`,
+  `<span class="kw">await</span> assets.<span class="fn">dispose</span>(); <span class="cm">// the texture is NOT destroyed</span>`,
+].join("\n");
+
+const wireCode = [
+  `<span class="kw">const</span> assets = <span class="fn">createTextureAssetManager</span>();`,
+  ``,
+  `<span class="cm">// after game.init(): disposal joins the LIFO finalizer chain</span>`,
+  `game.<span class="fn">addFinalizer</span>(() => assets.<span class="fn">dispose</span>());`,
+].join("\n");
+---
+
+<Base title="Assets · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="assets" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / core-concepts / assets</div>
+      <h1>Assets</h1>
+      <p>
+        <code>AssetManager</code> in <code>@g2w/core</code> is a minimal,
+        renderer-agnostic asset cache. Keys are opaque strings; values are whatever
+        the injected loader returns. The manager never interprets keys itself —
+        everything format- and browser-specific lives in the loader you inject or
+        the adapter you use.
+      </p>
+
+      <h2 id="basic">Load and cache</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/assets.ts</span></div>
+        <pre><code set:html={basicCode} /></pre>
+      </div>
+      <p>
+        The first <code>load(key)</code> invokes the loader; every later request for
+        the same key returns the same promise — and therefore the same value. The
+        <code>disposeAsset</code> option decides ownership (see below): with it, the
+        manager owns its resources; without it, it merely caches caller-owned
+        values.
+      </p>
+
+      <h2 id="dedupe">Concurrent requests deduplicate</h2>
+      <p>
+        Requests made while a load is in flight share that one load. Failure is
+        retryable: a rejected load removes its cache entry without poisoning it, so
+        a later <code>load(key)</code> invokes the loader again — and loader errors
+        are never wrapped:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>concurrent loads</span></div>
+        <pre><code set:html={dedupeCode} /></pre>
+      </div>
+
+      <h2 id="pixi">Textures with @g2w/renderer-pixi</h2>
+      <p>
+        <code>createTextureAssetManager</code> wraps PixiJS's <code>Assets.load</code>
+        behind the core contract. It is deliberately <b>non-destructive</b>:
+        textures live in PixiJS's global shared cache, where any other manager,
+        <code>Sprite.from</code>, or subsystem can reach the same instance — so the
+        manager never destroys them. <code>dispose()</code> releases its cache
+        entries and leaves texture lifetime to the session (the page unload reclaims
+        GPU and CPU memory). When your application <i>knows</i> nothing else uses a
+        texture, calling PixiJS's <code>Assets.unload(url)</code> explicitly is your
+        decision, not the manager's:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/assets.ts</span></div>
+        <pre><code set:html={pixiCode} /></pre>
+      </div>
+
+      <h2 id="wire">Wire disposal into the game</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={wireCode} /></pre>
+      </div>
+      <p>
+        Disposal is terminal and idempotent: new loads throw
+        <code>AssetError</code> immediately, in-flight loads still settle for their
+        callers, and once the disposal promise resolves every owned value has been
+        cleaned up exactly once — shared resources are never destroyed twice.
+      </p>
+
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Scope</span>
+        <span>
+          Intentionally unsupported: automatic unloading on scene transitions,
+          reference counting, and resource dependency graphs. The caller owns the
+          manager, decides when it lives and dies, and passes it to scenes
+          explicitly.
+        </span>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See <a href="/docs/sprites-and-transforms">Sprites &amp; Transforms</a> to
+        render what you load, or
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the ownership policy in full.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Assets</a>
+      <a href="#basic">Load and cache</a>
+      <a href="#dedupe">Concurrent requests</a>
+      <a href="#pixi">Textures with renderer-pixi</a>
+      <a href="#wire">Wire disposal into the game</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

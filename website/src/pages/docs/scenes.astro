@@ -1,0 +1,151 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const setupCode = [
+  `<span class="kw">import</span> { SceneManager, <span class="kw">type</span> Scene } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  ``,
+  `<span class="kw">const</span> menu: <span class="type">Scene</span> = {`,
+  `  <span class="fn">enter</span>() { renderer.stage.<span class="fn">addChild</span>(menuView); },`,
+  `  <span class="fn">update</span>(dt) {`,
+  `    <span class="kw">if</span> (input.<span class="fn">wasKeyPressed</span>(<span class="str">"Enter"</span>)) scenes.<span class="fn">goTo</span>(<span class="str">"gameplay"</span>);`,
+  `  },`,
+  `  <span class="fn">exit</span>() { renderer.stage.<span class="fn">removeChild</span>(menuView); },`,
+  `};`,
+  ``,
+  `<span class="kw">const</span> scenes = <span class="kw">new</span> <span class="type">SceneManager</span>({`,
+  `  scenes: { menu, gameplay },`,
+  `  initial: <span class="str">"menu"</span>,`,
+  `});`,
+].join("\n");
+
+const wireCode = [
+  `<span class="kw">const</span> game = <span class="kw">new</span> <span class="type">G2WGame</span>({`,
+  `  <span class="cm">// ...renderer, canvas, size</span>`,
+  `  <span class="fn">onUpdate</span>: (deltaTime) => {`,
+  `    scenes.<span class="fn">update</span>(deltaTime); <span class="cm">// no loop of its own</span>`,
+  `  },`,
+  `});`,
+  `<span class="kw">await</span> game.<span class="fn">init</span>();`,
+  `scenes.<span class="fn">start</span>();`,
+  `game.<span class="fn">start</span>();`,
+  ``,
+  `<span class="cm">// scene disposal joins the game's LIFO finalizer chain:</span>`,
+  `<span class="cm">// shutdown releases scenes before the renderer</span>`,
+  `game.<span class="fn">addFinalizer</span>(() => scenes.<span class="fn">dispose</span>());`,
+].join("\n");
+
+const hookTable = [
+  { hook: "init", desc: "At most once per instance, lazily on first activation. A failed init may be retried; enter never runs unless init completed." },
+  { hook: "enter", desc: "Every time the scene becomes active." },
+  { hook: "update", desc: "Once per frame with elapsed seconds. Game already clamps deltaTime." },
+  { hook: "exit", desc: "When the scene stops being active — paired with every successful enter." },
+  { hook: "dispose", desc: "Once when the manager is disposed, only for scenes whose init completed." },
+];
+---
+
+<Base title="Scenes · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="scenes" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / core-concepts / scenes</div>
+      <h1>Scenes</h1>
+      <p>
+        A <code>Scene</code> is a named, reusable unit of game logic driven by a
+        <code>SceneManager</code> from <code>@g2w/core</code>. The manager owns a
+        fixed set of named scenes and updates only the active one — it runs no
+        frame loop of its own; you drive it from <code>onUpdate</code>.
+      </p>
+
+      <h2 id="interface">The Scene interface</h2>
+      <p>All five hooks are optional and synchronous:</p>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Hook</th><th>When it runs</th></tr>
+          </thead>
+          <tbody>
+            {hookTable.map((row) => (
+              <tr><td><code>{row.hook}</code></td><td>{row.desc}</td></tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Acquire resources in <code>init</code> or <code>enter</code> and release them
+        in <code>exit</code> or <code>dispose</code>. Hook errors are never wrapped or
+        swallowed — they propagate to whichever call triggered the hook.
+      </p>
+
+      <h2 id="define">Define and register scenes</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/scenes.ts</span></div>
+        <pre><code set:html={setupCode} /></pre>
+      </div>
+      <p>
+        Registration <b>claims</b> the scene: an instance belongs to exactly one
+        manager for its lifetime, and registering the same instance anywhere else
+        throws <code>SceneError</code>. The claim is permanent — disposal of the
+        owning manager does not release it. Create a new instance instead.
+      </p>
+
+      <h2 id="wire">Wire it into the game</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={wireCode} /></pre>
+      </div>
+
+      <h2 id="transitions">Transitions</h2>
+      <p>
+        <code>goTo(name)</code> exits the previous scene before entering the next
+        one. Transitions apply immediately — except when requested from inside a
+        running scene hook, where they are deferred to the start of the next
+        <code>update</code>, so the current update finishes on the scene that asked
+        for the change. The most recent request always wins: it replaces any pending
+        deferred transition, and requesting the already-active scene cancels a
+        pending one. Unknown names throw <code>SceneError</code> without changing any
+        state.
+      </p>
+
+      <h2 id="disposal">Disposal</h2>
+      <p>
+        <code>dispose()</code> is immediate, idempotent, and terminal: the active
+        scene is exited, then every initialized scene is disposed in registration
+        order. Cleanup is best-effort — one hook's failure does not prevent the
+        remaining hooks, and the first error is rethrown (as an
+        <code>AggregateError</code> when several fail) after all cleanup attempts
+        complete.
+      </p>
+
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Scope</span>
+        <span>
+          Intentionally unsupported: async hooks, scene stacks, transition effects,
+          and constructor-time scene replacement. If you need them, they are roadmap
+          items — not hidden APIs.
+        </span>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See <a href="/docs/input">Input</a> for reading player actions inside
+        <code>update</code>, or
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the ownership rules behind the claim system.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Scenes</a>
+      <a href="#interface">The Scene interface</a>
+      <a href="#define">Define and register</a>
+      <a href="#wire">Wire into the game</a>
+      <a href="#transitions">Transitions</a>
+      <a href="#disposal">Disposal</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

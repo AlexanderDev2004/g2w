@@ -1,0 +1,83 @@
+---
+import "../styles/global.css";
+import { LOCKUP_NAVBAR, MARK_ICON } from "../lib/marks";
+import PixelMark from "../components/PixelMark.astro";
+
+interface Props {
+  title: string;
+  description?: string;
+}
+
+const {
+  title,
+  description = "g2w (Game to Website) is a TypeScript-first, AI-agent-ready framework for building and shipping HTML5 web games.",
+} = Astro.props;
+---
+
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content={description} />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="generator" content={Astro.generator} />
+    <title>{title}</title>
+  </head>
+  <body>
+    <nav class="navbar">
+      <div class="container navbar-inner">
+        <a class="navbar-brand" href="/" aria-label="g2w home">
+          <PixelMark grid={MARK_ICON} pixelSize={3} label="G2W pixel mark" />
+        </a>
+        <div class="navbar-links">
+          <a href="/docs/introduction">Docs</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">Roadmap</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md">Architecture</a>
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/CONTRIBUTING.md">Contributing</a>
+        </div>
+        <div class="navbar-right">
+          <span class="version-badge">v0.1.0</span>
+          <a
+            class="btn btn-sm btn-dark"
+            href="https://github.com/AlexanderDev2004/g2w"
+            aria-label="g2w on GitHub"
+          >
+            GitHub
+          </a>
+        </div>
+      </div>
+    </nav>
+    <slot />
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-grid">
+          <div class="footer-col" style="max-width: 320px">
+            <PixelMark grid={LOCKUP_NAVBAR} pixelSize={3} ink="#f2efe6" label="G2W" />
+            <p style="font-size: 13.5px; color: #a39e90; margin-top: 16px">
+              A TypeScript-first, AI-agent-ready framework for building and shipping web
+              games. MIT licensed.
+            </p>
+          </div>
+          <div class="footer-col">
+            <h3>Docs</h3>
+            <a href="/docs/introduction">Introduction</a>
+            <a href="/docs/installation">Installation</a>
+            <a href="/docs/your-first-game">Your First Game</a>
+            <a href="/docs/introduction#lifecycle">Game lifecycle</a>
+          </div>
+          <div class="footer-col">
+            <h3>Project</h3>
+            <a href="https://github.com/AlexanderDev2004/g2w">GitHub</a>
+            <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">Roadmap</a>
+            <a href="https://github.com/AlexanderDev2004/g2w/blob/main/CONTRIBUTING.md">Contributing</a>
+          </div>
+        </div>
+        <div class="fine">
+          <span>g2w — Game to Website</span>
+          <span>MIT License · Built with Astro + React</span>
+        </div>
+      </div>
+    </footer>
+  </body>
+</html>

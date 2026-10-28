@@ -1,0 +1,83 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const usageCode = [
+  `<span class="kw">import</span> { G2WGame } <span class="kw">from</span> <span class="str">"@g2w/runtime"</span>;`,
+  `<span class="kw">import</span> { PixiRenderer } <span class="kw">from</span> <span class="str">"@g2w/renderer-pixi"</span>;`,
+  ``,
+  `<span class="kw">const</span> game = <span class="kw">new</span> <span class="type">G2WGame</span>({`,
+  `  renderer: <span class="kw">new</span> <span class="type">PixiRenderer</span>(),`,
+  `  canvas: document.<span class="fn">querySelector</span>(<span class="str">"#game"</span>)!,`,
+  `  width: <span class="num">640</span>, height: <span class="num">360</span>,`,
+  `  <span class="fn">onUpdate</span>: (deltaTime) => { <span class="cm">/* your game logic here */</span> },`,
+  `});`,
+  ``,
+  `<span class="kw">await</span> game.<span class="fn">init</span>();`,
+  `game.<span class="fn">start</span>();`,
+].join("\n");
+---
+
+<Base title="Introduction · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="introduction" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / getting-started / introduction</div>
+      <h1>Introduction</h1>
+      <p>
+        <b>g2w (Game to Website)</b> is a TypeScript-first, AI-agent-ready framework for
+        building and shipping web games: HTML5 games, 2D first with 3D planned, for
+        desktop and mobile web browsers.
+      </p>
+      <p>
+        A game in g2w is a composition of small packages. You build a
+        <code>G2WGame</code> from <code>@g2w/runtime</code> with a renderer, a
+        <code>SceneManager</code>, input adapters, audio, and assets — then register your
+        resources as finalizers and let the Effect runtime own the lifecycle.
+      </p>
+
+      <h2 id="lifecycle">Lifecycle states</h2>
+      <p>
+        <code>Game</code> owns an explicit lifecycle state machine:
+        <code>new → initializing → initialized → running ⇄ stopped → disposed</code>. A
+        failed init returns to <code>new</code> and is retryable; disposal is idempotent
+        and every cleanup failure stays observable.
+      </p>
+
+      <h2 id="usage">Minimal usage</h2>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>main.ts</span></div>
+        <pre><code set:html={usageCode} /></pre>
+      </div>
+
+      <h2>Honest status</h2>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Status</span>
+        <span>
+          <b>The @g2w/* packages are not published to npm yet.</b> Until the release
+          lands, <span class="mono">pnpm create g2w</span> works only after publishing.
+          2D rendering over WebGL is done and browser-verified; 3D is exploratory
+          (Roadmap R8).
+        </span>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        Read the <a href="https://github.com/AlexanderDev2004/g2w/blob/main/docs/architecture.md"
+          >architecture notes</a
+        > for the implemented design, or the
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">roadmap</a>
+        for current priorities and planned work.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Introduction</a>
+      <a href="#lifecycle">Lifecycle states</a>
+      <a href="#usage">Minimal usage</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>

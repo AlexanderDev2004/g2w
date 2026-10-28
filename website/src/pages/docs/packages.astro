@@ -1,0 +1,152 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const table = [
+  { name: "@g2w/core", role: "Renderer-agnostic contracts: Game, SceneManager, InputState, GamepadState, AssetManager, Sprite2D/Transform2D, audio contract.", deps: "none", status: "done" },
+  { name: "@g2w/runtime", role: "Effect-based application runtime: managed lifecycle scope, G2WGame with idempotent shutdown and LIFO finalizers.", deps: "core, effect", status: "done" },
+  { name: "@g2w/renderer-pixi", role: "PixiJS 8 renderer adapter: WebGL/Canvas/WebGPU backends, sprite views, texture asset loading.", deps: "core, pixi.js", status: "done" },
+  { name: "@g2w/input-dom", role: "DOM adapter: keyboard, pointer, and multi-touch through Pointer Events onto InputState.", deps: "core", status: "done" },
+  { name: "@g2w/input-gamepad", role: "Gamepad API adapter with an injectable polling source; the host drives poll() once per frame.", deps: "core", status: "done" },
+  { name: "@g2w/audio-web", role: "Web Audio backend: decodes sound files, starts playbacks, owns the AudioContext lifecycle.", deps: "core", status: "done" },
+  { name: "@g2w/devtools", role: "Read-only dev overlay: scene explorer, transforms, FPS, watched input, runtime logs. Dev-only.", deps: "core", status: "done" },
+  { name: "create-g2w", role: "Zero-dependency CLI that scaffolds a TypeScript + Vite game project from a bundled template.", deps: "none", status: "done" },
+  { name: "@g2w/renderer-three", role: "Planned 3D rendering adapter proving the renderer contract generalizes.", deps: "core, three", status: "planned" },
+];
+---
+
+<Base title="Packages · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="pkg-core" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / packages</div>
+      <h1>Packages</h1>
+      <p>
+        g2w is not one big framework — it is a set of small packages with one strict
+        rule, enforced by architecture tests: adapters depend on
+        <code>@g2w/core</code>, and core never depends back. You compose only what
+        your game needs.
+      </p>
+
+      <h2 id="table">The full list</h2>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Package</th><th>Responsibility</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {table.map((row) => (
+              <tr>
+                <td class="name"><code>{row.name}</code></td>
+                <td class="desc">{row.role}</td>
+                <td>{row.status === "done" ? <span class="badge done">done</span> : <span class="badge planned">planned</span>}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="core">@g2w/core — the contract layer</h2>
+      <p>
+        Everything renderer-agnostic lives here, and it has <b>zero runtime
+        dependencies</b> — it never imports a rendering technology and never touches
+        browser globals or DOM events at runtime. Inside you find the
+        <code>Game</code> state machine and frame loop, the renderer contract and
+        <code>SceneManager</code>, the DOM-free <code>InputState</code> /
+        <code>GamepadState</code>, the generic <code>AssetManager</code>, the
+        <code>Transform2D</code>/<code>Sprite2D</code>/<code>Anchor2D</code> model,
+        the <code>GameObject</code> layer, and the <code>AudioManager</code>
+        contract.
+      </p>
+
+      <h2 id="runtime">@g2w/runtime — the Effect layer</h2>
+      <p>
+        The primary application path. One managed Effect runtime orchestrates the
+        core <code>Game</code> lifecycle as <code>G2WGame</code>: renderer init as a
+        lifecycle effect, ownership as LIFO finalizers, idempotent disposal, and
+        best-effort cleanup whose failures stay observable. The frame hot path never
+        allocates an Effect runtime, effect, or promise — the per-frame update is a
+        plain synchronous call. Core's <code>Game</code> ships side by side as the
+        reference implementation and stays Effect-free.
+      </p>
+
+      <h2 id="adapters">Adapters — browser concerns live at the edge</h2>
+      <p>
+        Each adapter implements one core contract and may depend only on
+        <code>@g2w/core</code> (plus its technology, for the renderer):
+      </p>
+      <p>
+        <code>@g2w/renderer-pixi</code> adapts PixiJS 8 and adds texture loading
+        plus <code>createSpriteView</code>.
+        <code>@g2w/input-dom</code> and <code>@g2w/input-gamepad</code> feed
+        normalized events and sampled state into core.
+        <code>@g2w/audio-web</code> implements the audio backend on Web Audio.
+        <code>@g2w/devtools</code> observes through immutable snapshots and never
+        mutates the runtime.
+      </p>
+
+      <h2 id="cli">create-g2w — a developer tool, not a runtime</h2>
+      <p>
+        A zero-dependency Node CLI (Node ≥ 22) that scaffolds a game from its
+        bundled template. It imports nothing from g2w, never prompts, and its only
+        subprocess is a local <code>git init</code>. See
+        <a href="/docs/installation">Installation</a>.
+      </p>
+
+      <h2 id="status">Publishing status</h2>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Status</span>
+        <span>
+          <b>No package is published to npm yet</b> (Roadmap R10). The monorepo
+          validates release readiness with packability checks and a release
+          rehearsal that publishes nothing; the release itself is gated behind a
+          manual workflow dispatch. Until then, consume packages from packed
+          tarballs.
+        </span>
+      </div>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        Read the <a href="/docs/introduction#lifecycle">game lifecycle</a> states,
+        or the
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > for the boundary rules each test enforces.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Packages</a>
+      <a href="#table">The full list</a>
+      <a href="#core">@g2w/core</a>
+      <a href="#runtime">@g2w/runtime</a>
+      <a href="#adapters">Adapters</a>
+      <a href="#cli">create-g2w</a>
+      <a href="#status">Publishing status</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border: 1.5px solid var(--ink);
+  }
+  .badge.done {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .badge.planned {
+    background: transparent;
+    color: var(--ink-60);
+    border-color: var(--line);
+  }
+</style>

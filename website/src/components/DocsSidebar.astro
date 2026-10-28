@@ -1,0 +1,36 @@
+---
+interface Props {
+  active: "introduction" | "installation" | "first-game";
+}
+
+const { active } = Astro.props;
+
+const items = [
+  { id: "introduction", label: "Introduction", href: "/docs/introduction", grp: "Getting Started" },
+  { id: "installation", label: "Installation", href: "/docs/installation", grp: "Getting Started" },
+  { id: "first-game", label: "Your First Game", href: "/docs/your-first-game", grp: "Getting Started" },
+  { id: "lifecycle", label: "Game Lifecycle", href: "/docs/introduction#lifecycle", grp: "Core Concepts" },
+  { id: "scenes", label: "Scenes", href: "/docs/scenes", grp: "Core Concepts" },
+  { id: "sprites", label: "Sprites &amp; Transforms", href: "/docs/sprites-and-transforms", grp: "Core Concepts" },
+  { id: "input", label: "Input", href: "/docs/input", grp: "Core Concepts" },
+  { id: "audio", label: "Audio", href: "/docs/audio", grp: "Core Concepts" },
+  { id: "assets", label: "Assets", href: "/docs/assets", grp: "Core Concepts" },
+  { id: "pkg-core", label: "Packages", href: "/docs/packages", grp: "Packages" },
+  { id: "backends", label: "Renderer Backends", href: "#", grp: "Advanced" },
+  { id: "ownership", label: "Ownership Rules", href: "#", grp: "Advanced" },
+  { id: "architecture", label: "Architecture", href: "#", grp: "Advanced" },
+];
+---
+
+<aside class="docs-sidebar">
+  {
+    items.map((item, i) => (
+      <>
+        {i === 0 || items[i - 1].grp !== item.grp ? (
+          <div class="grp">{item.grp}</div>
+        ) : null}
+        <a class={active === item.id ? "on" : undefined} href={item.href} set:html={item.label} />
+      </>
+    ))
+  }
+</aside>

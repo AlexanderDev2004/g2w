@@ -1,0 +1,41 @@
+---
+/**
+ * Renders a G2W pixel mark as inline SVG (shape-rendering: crispEdges).
+ * No JavaScript — the pixel grid in src/lib/marks.ts is the single truth.
+ */
+import { gridSize, toRects, type PixelGrid } from "../lib/marks";
+
+interface Props {
+  grid: PixelGrid;
+  pixelSize?: number;
+  ink?: string;
+  signal?: string;
+  label?: string;
+}
+
+const { grid, pixelSize = 4, ink = "#191610", signal = "#ff4d00", label } = Astro.props;
+const { width, height } = gridSize(grid);
+const rects = toRects(grid);
+---
+
+<svg
+  width={width * pixelSize}
+  height={height * pixelSize}
+  viewBox={`0 0 ${width} ${height}`}
+  role={label ? "img" : "presentation"}
+  aria-label={label}
+  aria-hidden={label ? undefined : "true"}
+  shape-rendering="crispEdges"
+>
+  {
+    rects.map((r) => (
+      <rect
+        x={r.x}
+        y={r.y}
+        width={1.02}
+        height={1.02}
+        fill={r.char === "o" ? signal : ink}
+      />
+    ))
+  }
+</svg>

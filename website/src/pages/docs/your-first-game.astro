@@ -1,0 +1,195 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const canvasCode = [
+  `<span class="kw">&lt;</span>canvas id=<span class="str">"game"</span> width=<span class="num">640</span> height=<span class="num">360</span><span class="kw">&gt;&lt;</span>/canvas<span class="kw">&gt;</span>`,
+  `<span class="kw">&lt;</span>pre id=<span class="str">"error"</span> hidden<span class="kw">&gt;&lt;</span>/pre<span class="kw">&gt;</span>`,
+].join("\n");
+
+const boundaryCode = [
+  `<span class="kw">const</span> renderer = <span class="kw">new</span> <span class="type">PixiRenderer</span>();`,
+  `<span class="kw">const</span> input = <span class="kw">new</span> <span class="type">InputState</span>();`,
+  `<span class="kw">const</span> domInput = <span class="kw">new</span> <span class="type">DomInput</span>(input, {`,
+  `  canvas,`,
+  `  keyTarget: window,`,
+  `  blurTarget: window,`,
+  `  <span class="cm">// pointer + key coords in the game's logical space</span>`,
+  `  logicalSize: { width: VIEW_WIDTH, height: VIEW_HEIGHT },`,
+  `});`,
+].join("\n");
+
+const gameCode = [
+  `<span class="kw">const</span> game = <span class="kw">new</span> <span class="type">G2WGame</span>({`,
+  `  renderer,`,
+  `  canvas,`,
+  `  backgroundColor: <span class="str">"#1099bb"</span>,`,
+  `  width: VIEW_WIDTH,`,
+  `  height: VIEW_HEIGHT,`,
+  `  resolution: window.devicePixelRatio || <span class="num">1</span>,`,
+  `  <span class="fn">onUpdate</span>: (deltaTime) => {`,
+  `    scenes.<span class="fn">update</span>(deltaTime);`,
+  `    <span class="cm">// pressed/released edges reset here, after every</span>`,
+  `    <span class="cm">// consumer has read this frame's state</span>`,
+  `    input.<span class="fn">endFrame</span>();`,
+  `  },`,
+  `});`,
+  `<span class="kw">await</span> game.<span class="fn">init</span>();`,
+].join("\n");
+
+const logicCode = [
+  `<span class="kw">export function</span> <span class="fn">nextPlayerPosition</span>(`,
+  `  input: <span class="type">MoveInput</span>,       <span class="cm">// structural: { isKeyDown(code) }</span>`,
+  `  position: <span class="type">Position</span>,`,
+  `  deltaTime: <span class="type">number</span>,      <span class="cm">// clamped, in seconds</span>`,
+  `  bounds: <span class="type">Bounds</span>,`,
+  `): <span class="type">Position</span> {`,
+  `  <span class="cm">// WASD / arrows → velocity × deltaTime, clamped</span>`,
+  `}`,
+].join("\n");
+
+const sceneCode = [
+  `<span class="kw">const</span> playScene: <span class="type">Scene</span> = {`,
+  `  <span class="fn">init</span>() {},`,
+  `  <span class="fn">enter</span>() { renderer.stage.<span class="fn">addChild</span>(square); },`,
+  `  <span class="fn">update</span>(deltaTime) {`,
+  `    <span class="kw">const</span> next = <span class="fn">nextPlayerPosition</span>(input, player, deltaTime, bounds);`,
+  `    player.x = next.x; player.y = next.y;`,
+  `    square.x = next.x; square.y = next.y;`,
+  `  },`,
+  `  <span class="fn">exit</span>() { renderer.stage.<span class="fn">removeChild</span>(square); },`,
+  `  <span class="fn">dispose</span>() { square.<span class="fn">destroy</span>(); },`,
+  `};`,
+  ``,
+  `<span class="kw">const</span> scenes = <span class="kw">new</span> <span class="type">SceneManager</span>({ scenes: { play: playScene }, initial: <span class="str">"play"</span> });`,
+  `<span class="cm">// scene disposal joins the game's LIFO finalizer chain:</span>`,
+  `<span class="cm">// shutdown releases scenes before the renderer</span>`,
+  `game.<span class="fn">addFinalizer</span>(() => scenes.<span class="fn">dispose</span>());`,
+].join("\n");
+
+const bootCode = [
+  `domInput.<span class="fn">attach</span>();`,
+  `scenes.<span class="fn">start</span>();`,
+  `game.<span class="fn">start</span>();`,
+].join("\n");
+---
+
+<Base title="Your First Game · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="first-game" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / getting-started / your-first-game</div>
+      <h1>Your First Game</h1>
+      <p>
+        Walk through what <code>create-g2w</code> scaffolds: a 640×360 scene where you
+        steer a square with WASD or the arrow keys — small enough to read in one
+        sitting, real enough to show every boundary in the framework.
+      </p>
+
+      <h2 id="canvas">1 · The canvas</h2>
+      <p>
+        <code>index.html</code> holds one canvas at the game's logical resolution plus
+        a hidden <code>&lt;pre id="error"&gt;</code> box. The template's stylesheet
+        caps the canvas with <code>max-width: 100%</code>, so narrower viewports scale
+        the game proportionally instead of overflowing:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>index.html</span></div>
+        <pre><code set:html={canvasCode} /></pre>
+      </div>
+
+      <h2 id="boundary">2 · Wire the adapter boundary</h2>
+      <p>
+        In <code>src/main.ts</code>, create the renderer and input adapters once, at
+        the application boundary. Game logic never touches DOM events — it reads
+        input only through the DOM-free <code>InputState</code>:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={boundaryCode} /></pre>
+      </div>
+
+      <h2 id="game">3 · Compose G2WGame</h2>
+      <p>
+        <code>G2WGame</code> owns the application lifecycle: it drives the renderer,
+        the frame loop, and disposal. The frame path is a plain synchronous update —
+        no Effect work, promises, or allocations per frame. One rule to remember:
+        <code>input.endFrame()</code> runs exactly once per frame, after every
+        consumer has read this frame's state.
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={gameCode} /></pre>
+      </div>
+
+      <h2 id="logic">4 · Keep game logic renderer-agnostic</h2>
+      <p>
+        The player movement lives in <code>src/scenes/play-scene.ts</code> — a pure
+        function over a structural input interface. Because it imports nothing but
+        types, the template's Vitest suite drives it deterministically without a
+        browser, PixiJS, or real timers:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/scenes/play-scene.ts</span></div>
+        <pre><code set:html={logicCode} /></pre>
+      </div>
+
+      <h2 id="scene">5 · Register the scene and its cleanup</h2>
+      <p>
+        Core scenes are renderer-agnostic: PixiJS display objects stay in
+        <code>main.ts</code> at the adapter boundary, added on <code>enter</code> and
+        removed on <code>exit</code>. Scene disposal joins the game's LIFO finalizer
+        chain, so shutdown releases scenes before the renderer:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={sceneCode} /></pre>
+      </div>
+
+      <h2 id="run">6 · Boot it</h2>
+      <p>
+        Attach the DOM adapter, start the scene manager, then start the frame loop.
+        The template also registers a <code>pagehide</code> handler that disposes the
+        adapter first, then the game — <code>G2WGame</code> disposal is idempotent,
+        so a repeated <code>pagehide</code> is safe:
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>src/main.ts</span></div>
+        <pre><code set:html={bootCode} /></pre>
+      </div>
+      <p>
+        Run <code>pnpm dev</code> to open the game in a browser,
+        <code>pnpm test</code> for the deterministic unit tests, and
+        <code>pnpm typecheck</code> for strict TypeScript — the scaffolded project
+        has all three wired up.
+      </p>
+
+      <h2 id="next">Where to go next</h2>
+      <p>
+        Swap the square for <code>Sprite2D</code> + <code>Transform2D</code> models
+        with <code>createSpriteView</code> (<a href="/docs/sprites-and-transforms"
+          >Sprites &amp; Transforms</a
+        >), load textures through the <code>AssetManager</code> (<a href="/docs/assets"
+          >Assets</a
+        >), add sound with <code>@g2w/audio-web</code>, or sample gamepads with
+        <code>@g2w/input-gamepad</code>. The
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ARCHITECTURE.md"
+          >architecture notes</a
+        > explain the ownership rules behind each boundary.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Your First Game</a>
+      <a href="#canvas">The canvas</a>
+      <a href="#boundary">Wire the adapter boundary</a>
+      <a href="#game">Compose G2WGame</a>
+      <a href="#logic">Renderer-agnostic logic</a>
+      <a href="#scene">Scenes &amp; cleanup</a>
+      <a href="#run">Boot it</a>
+      <a href="#next">Where to go next</a>
+    </aside>
+  </div>
+</Base>

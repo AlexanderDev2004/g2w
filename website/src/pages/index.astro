@@ -1,0 +1,299 @@
+---
+import Base from "../layouts/Base.astro";
+import PixelMark from "../components/PixelMark.astro";
+import Installer from "../components/react/Installer";
+import { LOCKUP_NAVBAR } from "../lib/marks";
+
+const packages = [
+  {
+    name: "@g2w/core",
+    desc: "Renderer-agnostic engine contracts, Game runtime, SceneManager, InputState, GamepadState, AssetManager, sprites, audio contract — zero runtime dependencies.",
+    status: "done",
+  },
+  {
+    name: "@g2w/runtime",
+    desc: "Effect-based application lifecycle: G2WGame, one managed runtime, LIFO finalizers, idempotent shutdown.",
+    status: "done",
+  },
+  {
+    name: "@g2w/renderer-pixi",
+    desc: "PixiJS 8 adapter: WebGL / Canvas / WebGPU backends, sprite views, texture asset loading.",
+    status: "done",
+  },
+  {
+    name: "@g2w/input-dom",
+    desc: "DOM adapter: keyboard, pointer, and multi-touch through Pointer Events onto InputState.",
+    status: "done",
+  },
+  {
+    name: "@g2w/input-gamepad",
+    desc: "Gamepad API adapter with an injectable polling source; the host drives poll() once per frame.",
+    status: "done",
+  },
+  {
+    name: "@g2w/audio-web",
+    desc: "Web Audio backend: decode, playback, AudioContext ownership, autoplay resume().",
+    status: "done",
+  },
+  {
+    name: "@g2w/devtools",
+    desc: "Read-only dev overlay: scene explorer, transforms, FPS, watched input, runtime logs. Dev-only.",
+    status: "done",
+  },
+  {
+    name: "create-g2w",
+    desc: "Zero-dependency CLI that scaffolds a TypeScript + Vite game project from a template.",
+    status: "done",
+  },
+  {
+    name: "@g2w/renderer-three",
+    desc: "Planned 3D rendering adapter proving the renderer contract generalizes.",
+    status: "planned",
+  },
+];
+
+const features = [
+  {
+    idx: "F—01",
+    title: "Renderer Agnostic",
+    body: 'Game code targets the renderer contract in <code class="mono">@g2w/core</code>, never PixiJS. WebGL today; Canvas and WebGPU backends browser-verified; a Three.js adapter planned — the core never knows.',
+  },
+  {
+    idx: "F—02",
+    title: "Effect-Native Lifecycle",
+    body: '<code class="mono">G2WGame</code> orchestrates init, ownership, and idempotent shutdown through one managed Effect runtime. LIFO finalizers release every resource — the frame loop stays synchronous.',
+  },
+  {
+    idx: "F—03",
+    title: "Input, Everywhere",
+    body: 'Keyboard, pointer, and multi-touch ride one DOM-free <code class="mono">InputState</code>; gamepads sample through the Gamepad API adapter. Edge states reset at exactly one boundary per frame.',
+  },
+  {
+    idx: "F—04",
+    title: "Scenes & Sprites",
+    body: 'A renderer-agnostic <code class="mono">SceneManager</code> with explicit transition semantics, plus <code class="mono">Transform2D</code>/<code class="mono">Sprite2D</code> models with anchors and z-order — mutate the model, call <code class="mono">sync()</code>.',
+  },
+  {
+    idx: "F—05",
+    title: "Ownership-Explicit Audio",
+    body: '<code class="mono">AudioManager</code> in core, Web Audio backend in the adapter. Tracked playbacks, autoplay-aware <code class="mono">resume()</code>, and sounds that stay caller-owned so they can be shared freely.',
+  },
+  {
+    idx: "F—06",
+    title: "AI-Agent Ready",
+    body: "A deterministic, DOM-free core designed to be driven by agents: injected schedulers and fakes everywhere, honest docs, and a read-only devtools overlay for live inspection.",
+  },
+];
+
+const installers = [
+  { id: "pnpm", command: "pnpm create g2w my-game" },
+  { id: "npm", command: "npm create g2w@latest my-game" },
+  { id: "yarn", command: "yarn create g2w my-game" },
+  { id: "bun", command: "bun create g2w my-game" },
+];
+
+// HTML-highlighted code samples live in frontmatter strings so braces in the
+// sample code are never parsed as Astro template expressions.
+const usageCode = [
+  `<span class="kw">import</span> { SceneManager, InputState, <span class="type">Sprite2D</span>, Transform2D } <span class="kw">from</span> <span class="str">"@g2w/core"</span>;`,
+  `<span class="kw">import</span> { DomInput } <span class="kw">from</span> <span class="str">"@g2w/input-dom"</span>;`,
+  `<span class="kw">import</span> { PixiRenderer, createSpriteView } <span class="kw">from</span> <span class="str">"@g2w/renderer-pixi"</span>;`,
+  `<span class="kw">import</span> { G2WGame } <span class="kw">from</span> <span class="str">"@g2w/runtime"</span>;`,
+  ``,
+  `<span class="cm">// a renderer-agnostic sprite: game code mutates the model only</span>`,
+  `<span class="kw">const</span> logo = <span class="kw">new</span> <span class="type">Sprite2D</span>({ texture, transform: <span class="kw">new</span> <span class="type">Transform2D</span>({ x: <span class="num">16</span>, y: <span class="num">32</span>) });`,
+  `<span class="kw">const</span> logoView = <span class="fn">createSpriteView</span>({ sprite: logo, renderer });`,
+  ``,
+  `<span class="kw">const</span> game = <span class="kw">new</span> <span class="type">G2WGame</span>({`,
+  `  renderer,`,
+  `  canvas: document.<span class="fn">querySelector</span>(<span class="str">"#game"</span>)!,`,
+  `  width: <span class="num">640</span>, height: <span class="num">360</span>,`,
+  `  <span class="fn">onUpdate</span>: (deltaTime) => {`,
+  `    scenes.<span class="fn">update</span>(deltaTime);`,
+  `    input.<span class="fn">endFrame</span>(); <span class="cm">// one boundary per frame, after every consumer</span>`,
+  `  },`,
+  `});`,
+  ``,
+  `<span class="kw">await</span> game.<span class="fn">init</span>();`,
+  `game.<span class="fn">addFinalizer</span>(() => scenes.<span class="fn">dispose</span>()); <span class="cm">// LIFO disposal</span>`,
+  `game.<span class="fn">start</span>();`,
+].join("\n");
+---
+
+<Base title="g2w — Game to Website">
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero">
+      <div class="container">
+        <span class="hero-eyebrow">TypeScript-first · AI-agent-ready · MIT</span>
+        <h1>Game to<br />Website<span class="accent">.</span></h1>
+        <div class="tagline">The framework for shipping web games.</div>
+        <p class="sub">
+          g2w is a TypeScript-first framework for building and shipping HTML5 games —
+          2D first with 3D planned — for desktop and mobile web browsers. A
+          renderer-agnostic core, an Effect-native lifecycle, and browser adapters you
+          compose yourself.
+        </p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="/docs/introduction">Get Started →</a>
+          <a class="btn btn-dark" href="https://github.com/AlexanderDev2004/g2w">View on GitHub</a>
+        </div>
+        <Installer client:visible managers={installers} />
+        <p
+          class="mono"
+          style="font-size: 11.5px; color: var(--ink-40); margin-top: 14px"
+        >
+          // the @g2w/* packages are not yet published to npm — resolved from packed
+          tarballs until the release lands
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ FEATURES ============ -->
+    <section class="section" id="features">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-eyebrow">01 · Why g2w</div>
+          <h2>A shared core to build games on</h2>
+          <p>
+            Small packages with one strict rule, enforced by architecture tests:
+            <b class="mono">@g2w/core</b> never depends on a rendering technology.
+          </p>
+        </div>
+        <div class="cards">
+          {
+            features.map((f) => (
+              <div class="card">
+                <span class="idx">{f.idx}</span>
+                <h3>{f.title}</h3>
+                <p set:html={f.body} />
+              </div>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ STATS ============ -->
+    <section class="section">
+      <div class="container">
+        <div class="stats">
+          <div class="stat">
+            <div class="num">8+</div>
+            <div class="label">Packages</div>
+          </div>
+          <div class="stat">
+            <div class="num">453</div>
+            <div class="label">Tests passing</div>
+          </div>
+          <div class="stat">
+            <div class="num">0</div>
+            <div class="label">Runtime deps in core</div>
+          </div>
+          <div class="stat">
+            <div class="num">2D → 3D</div>
+            <div class="label">Renderer roadmap</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ PACKAGES ============ -->
+    <section class="section" id="packages">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-eyebrow">02 · Packages</div>
+          <h2>One framework, small packages</h2>
+          <p>
+            Compose only what your game needs. Adapters depend on core — never the
+            reverse.
+          </p>
+        </div>
+        <div class="pkg-table">
+          <table>
+            <thead>
+              <tr>
+                <th>Package</th>
+                <th>Responsibility</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+            <tbody>
+              {
+                packages.map((pkg) => (
+                  <tr>
+                    <td class="name">{pkg.name}</td>
+                    <td class="desc">{pkg.desc}</td>
+                    <td>
+                      <span class={`badge badge-${pkg.status}`}>
+                        <span class="dot" />
+                        {pkg.status === "done" ? "Done" : "Planned · R8"}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ MINIMAL USAGE ============ -->
+    <section class="section" id="usage">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-eyebrow">03 · Minimal usage</div>
+          <h2>A game is a composition of small packages</h2>
+          <p>
+            Build a <b class="mono">G2WGame</b> from <b class="mono">@g2w/runtime</b> with
+            a renderer, a <b class="mono">SceneManager</b>, input, audio, and assets —
+            then register your resources as finalizers and let the Effect runtime own the
+            lifecycle.
+          </p>
+        </div>
+        <div class="codeblock">
+          <div class="cb-head"><span>main.ts</span><span>g2w · minimal usage</span></div>
+          <pre><code set:html={usageCode} /></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ HONEST STATUS ============ -->
+    <section class="section">
+      <div class="container">
+        <div class="callout">
+          <span class="tag">Status</span>
+          <span>
+            <b>Honest status:</b> the <span class="mono">@g2w/*</span> packages are
+            <b>not published to npm yet</b>. Until the release lands,
+            <span class="mono">pnpm create g2w</span> works only after publishing —
+            generated projects resolve packages from packed tarballs. 2D rendering over
+            WebGL is done and browser-verified; 3D is exploratory (Roadmap R8).
+          </span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ FOOTER CTA ============ -->
+    <section class="section" style="padding-bottom: 24px">
+      <div class="container" style="text-align: center">
+        <PixelMark grid={LOCKUP_NAVBAR} pixelSize={4} label="g2w — Game to Website" />
+        <h2
+          class="mono"
+          style="font-size: clamp(22px, 3vw, 30px); letter-spacing: -0.02em; margin: 24px 0 8px"
+        >
+          Start building with g2w
+        </h2>
+        <p style="color: var(--ink-60); margin-bottom: 24px">
+          Scaffold a working TypeScript + Vite 2D game that boots through the public g2w
+          API.
+        </p>
+        <div class="hero-ctas" style="justify-content: center; margin-bottom: 0">
+          <a class="btn btn-primary" href="/docs/introduction">Get Started →</a>
+          <a class="btn" href="https://github.com/AlexanderDev2004/g2w">GitHub</a>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>

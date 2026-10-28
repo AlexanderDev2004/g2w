@@ -103,21 +103,22 @@ If `npm publish` fails partway (the order above matters — `@g2w/core` first,
    `@g2w/core@X.Y.Z` does not), the follow-up `X.Y.(Z+1)` release repairs it;
    document the incident in the changelog.
 
-## One-time setup (manual, not yet done)
+## One-time setup (GitHub-side done; npm-side configured, unverified until first publish)
 
-These steps need npm-account and GitHub-repository access. Until all of them
-are done, the release workflow can only rehearse. Verify the exact UI flow
-against npm's docs (docs.npmjs.com → "Trusted publishers") — details below
-reflect npm Trusted Publishing as introduced in 2025 and should be
+These steps need npm-account and GitHub-repository access. The GitHub-side
+steps are complete; the npm-side configuration was done manually by the owner
+(2026-10-28) but is only proven by the first real publish. Verify the exact UI
+flow against npm's docs (docs.npmjs.com → "Trusted publishers") — details
+below reflect npm Trusted Publishing as introduced in 2025 and should be
 re-checked at setup time.
-1. **npm account** — the `AlexanderDev2004` npm account must exist, be
-   2FA-enabled, and own the package names. `@g2w` scope must be created with
-   public access. Name availability is checked on npmjs.com (or
-   `npm view @g2w/core` — an HTTP 404 means the name is free); **this has
-   not been verified and is an external prerequisite.**
+1. **npm account** — the npm account `alexander110` (owner `Alexander Agung
+   Raya`, the same person as the GitHub account `AlexanderDev2004`; npm
+   username and GitHub username do not need to match) must be 2FA-enabled and
+   own the package names. The `@g2w` scope is created with the first
+   published scoped package (public access). All eight names were unclaimed
+   when checked on npmjs.com (2026-10-28).
 2. **Trusted Publisher per package** — on npmjs.com, for each of the eight
-   packages (new packages can be pre-configured via the "trusted publisher"
-   flow before their first publish), configure: repository
+   packages, configured (2026-10-28, by the owner): repository
    `AlexanderDev2004/g2w`, workflow filename `release.yml`, environment
    `npm-release`. npm then accepts publishes whose OIDC token matches that
    identity — **no npm token is ever created or stored.**

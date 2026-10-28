@@ -1,0 +1,162 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const enableCode = [
+  `<span class="cm">// Dev-only runtime inspector, opt-in and dynamically imported so production</span>`,
+  `<span class="cm">// builds exclude it entirely.</span>`,
+  `<span class="kw">if</span> (<span class="fn">import</span>.meta.env.DEV) {`,
+  `  <span class="kw">const</span> { createDevTools } = <span class="kw">await</span> <span class="fn">import</span>(<span class="str">"@g2w/devtools"</span>);`,
+  `  <span class="kw">const</span> devtools = <span class="fn">createDevTools</span>({ scenes, objects: sparks, input });`,
+  `  devtools.<span class="fn">open</span>();`,
+  `}`,
+].join("\n");
+
+const optionsRows = [
+  { name: "scenes", type: "SceneManager", def: "—", desc: "Scene explorer source: scene names and the active scene key." },
+  { name: "objects", type: "GameObjectCollection | () => GameObject[]", def: "—", desc: "Object list source, read through the collection's snapshot accessor." },
+  { name: "input", type: "InputState", def: "—", desc: "Input monitor source, polled on the watched keys and buttons." },
+  { name: "watchKeys", type: "string[]", def: "WASD, arrows, Escape", desc: "Key codes the input monitor polls. InputState has no key enumeration, so polling is explicit." },
+  { name: "watchButtons", type: "number[]", def: "[0, 1, 2]", desc: "Pointer button indexes the input monitor polls." },
+  { name: "title", type: "string", def: '"g2w DevTools"', desc: "Header title of the overlay panel." },
+  { name: "logLimit", type: "number", def: "200", desc: "Runtime-log capacity; the oldest entries are dropped first." },
+  { name: "refreshHz", type: "number", def: "10", desc: "Panel refresh rate in hertz. The frame loop itself runs every frame." },
+  { name: "document", type: "Document", def: "global document", desc: "Injectable for deterministic tests." },
+  { name: "scheduler", type: "DevToolsScheduler", def: "rafScheduler()", desc: "Frame source for the overlay loop, injectable for deterministic tests." },
+].map((row) => [
+  `<code>${row.name}</code>`,
+  row.type,
+  row.def,
+  row.desc,
+]);
+---
+
+<Base title="DevTools · g2w docs">
+  <div class="docs">
+    <DocsSidebar active="devtools" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / tooling / devtools</div>
+      <h1>DevTools</h1>
+      <p>
+        <code>@g2w/devtools</code> is a <b>read-only runtime inspector</b>: a small
+        overlay panel that lives in the corner of your page while you develop, showing
+        what your game is actually doing right now — its scenes, objects, transforms,
+        frame performance, watched input, and a bounded runtime log.
+      </p>
+      <p>
+        It is development-only by design. The overlay is opt-in, dynamically imported,
+        and never ships in a production build — the demo boots it behind
+        <code>import.meta.env.DEV</code>, so the chunk is not even fetched in a
+        production bundle.
+      </p>
+
+      <img
+        src="/docs/devtools-overlay.png"
+        alt="The hello-world demo running with the g2w DevTools overlay open in the bottom-right corner"
+        style="width: 100%; border: 2px solid var(--ink); margin: 8px 0 4px"
+      />
+      <p style="font-size: 13px; color: var(--ink-60)">
+        The hello-world demo with the overlay open in the bottom-right corner.
+      </p>
+
+      <h2 id="panels">What it shows</h2>
+      <p>
+        The panel is split into six read-only sections, each built from the public g2w
+        APIs you hand it at construction time:
+      </p>
+
+      <img
+        src="/docs/devtools-panel.png"
+        alt="Close-up of the g2w DevTools overlay panel: Scene Explorer, Objects, Transform Inspector, Performance, and Input sections"
+        style="width: 420px; max-width: 100%; border: 2px solid var(--ink); margin: 8px 0 4px"
+      />
+
+      <ul>
+        <li>
+          <b>Scene Explorer</b> — every registered scene name and which one is
+          currently active, from <code>SceneManager</code>'s public surface.
+        </li>
+        <li>
+          <b>Objects</b> — the game objects currently in the collection you passed in,
+          each with a positional label (<code>#0</code>, <code>#1</code>, …) derived
+          from insertion order. Click a row to inspect it.
+        </li>
+        <li>
+          <b>Transform Inspector</b> — the five public fields of the selected object's
+          <code>Transform2D</code>: <code>x</code>, <code>y</code>, <code>rotation</code>,
+          <code>scaleX</code>, <code>scaleY</code>.
+        </li>
+        <li>
+          <b>Performance</b> — average FPS and frame time over a 120-frame window,
+          computed from the overlay's own frame loop. It never adds a second game loop.
+        </li>
+        <li>
+          <b>Input monitor</b> — pointer position and which watched keys and pointer
+          buttons are currently held, polled from your <code>InputState</code>.
+        </li>
+        <li>
+          <b>Runtime log</b> — a bounded log (200 entries by default, 50 rendered) you
+          can write to with <code>devtools.log(level, message)</code>.
+        </li>
+      </ul>
+
+      <h2 id="enabling">Enabling it</h2>
+      <p>
+        DevTools observes whatever you give it and nothing more — wire it up in your
+        composition root, guarded so production builds exclude it entirely:
+      </p>
+      <pre><code set:html={enableCode} /></pre>
+      <p>
+        Every source is optional; DevTools reports a section as empty or
+        <code>"unsupported"</code> when you don't provide it, rather than inventing
+        data. The object list and input monitor only work if you pass
+        <code>objects</code> and <code>input</code>.
+      </p>
+
+      <h2 id="options">Options</h2>
+      <table>
+        <thead>
+          <tr><th>Option</th><th>Type</th><th>Default</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          {optionsRows.map(([name, type, def, desc]) => (
+            <tr><td set:html={name} /><td>{type}</td><td>{def}</td><td>{desc}</td></tr>
+          ))}
+        </tbody>
+      </table>
+
+      <h2 id="api">API</h2>
+      <p>
+        <code>createDevTools(options)</code> returns a <code>DevTools</code> instance
+        with three lifecycle methods and a small read-write surface:
+      </p>
+      <ul>
+        <li><code>open()</code> / <code>close()</code> — show and hide the overlay. The frame loop only runs while open.</li>
+        <li>
+          <code>dispose()</code> — terminal and idempotent: removes the overlay, cancels
+          the overlay frame loop, and clears the log buffer. It never disposes the game,
+          the renderer, scenes, input, or any shared resource — the runtime outlives
+          DevTools.
+        </li>
+        <li><code>select(index | null)</code> — pick which object row the Transform Inspector shows.</li>
+        <li><code>log(level, message)</code> — append a runtime-log entry (<code>"info"</code>, <code>"warn"</code>, or <code>"error"</code>).</li>
+      </ul>
+
+      <h2 id="guarantees">What DevTools will never do</h2>
+      <p>
+        The package is built around one rule, enforced by its tests: <b>nothing mutates
+        the game</b>. DevTools holds references and reads them through immutable
+        snapshots of the public API — it never reads private fields, never writes state,
+        never disposes your runtime, and its frame loop only ever refreshes the overlay.
+        Information the model does not expose is reported as <code>null</code> or
+        <code>"unsupported"</code>.
+      </p>
+      <div class="callout">
+        <b>Object labels are positional.</b> <code>#0</code>, <code>#1</code>, … reflect
+        the collection's current insertion order and shift when objects are added or
+        removed. g2w has no stable object IDs, so DevTools does not invent them.
+      </div>
+    </main>
+  </div>
+</Base>

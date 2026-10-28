@@ -140,6 +140,9 @@ a {
   height: 3px;
   background: var(--ink);
 }
+.navbar-menu {
+  display: none;
+}
 
 /* ---------- buttons ---------- */
 .btn {
@@ -726,6 +729,9 @@ a {
   }
   .navbar-links {
     display: none;
+  }
+  .navbar-menu {
+    display: none;
     position: absolute;
     top: 100%;
     left: 0;
@@ -737,11 +743,16 @@ a {
     background: var(--paper);
     border-bottom: 2px solid var(--ink);
   }
-  .navbar.menu-open .navbar-links {
+  .navbar.menu-open .navbar-menu {
     display: flex;
   }
-  .navbar-links a {
+  .navbar-menu a {
     padding: 14px 12px;
     font-size: 15px;
+  }
+  .navbar-menu a.active {
+    color: var(--paper-2);
+    background: var(--ink);
+    font-weight: 600;
   }
 }

@@ -76,7 +76,7 @@ const site = "https://g2w.alexanderar.com";
             <span class="nav-toggle-bar"></span>
           </button>
         </div>
-        <div class="navbar-links" id="site-menu">
+        <div class="navbar-menu" id="site-menu">
           <a href="/docs/introduction">Docs</a>
           <a href="/playground">Playground</a>
           <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">Roadmap</a>
@@ -124,7 +124,7 @@ const site = "https://g2w.alexanderar.com";
         const open = nav?.classList.toggle("menu-open") ?? false;
         toggle?.setAttribute("aria-expanded", String(open));
       });
-      document.querySelectorAll(".navbar-links a").forEach((link) => {
+      document.querySelectorAll(".navbar-menu a").forEach((link) => {
         link.addEventListener("click", () => {
           nav?.classList.remove("menu-open");
           toggle?.setAttribute("aria-expanded", "false");

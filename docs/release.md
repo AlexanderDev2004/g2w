@@ -103,35 +103,50 @@ If `npm publish` fails partway (the order above matters — `@g2w/core` first,
    `@g2w/core@X.Y.Z` does not), the follow-up `X.Y.(Z+1)` release repairs it;
    document the incident in the changelog.
 
-## One-time setup (GitHub-side done; npm-side configured, unverified until first publish)
+### Manual publish fallback
 
-These steps need npm-account and GitHub-repository access. The GitHub-side
-steps are complete; the npm-side configuration was done manually by the owner
-(2026-10-28) but is only proven by the first real publish. Verify the exact UI
-flow against npm's docs (docs.npmjs.com → "Trusted publishers") — details
-below reflect npm Trusted Publishing as introduced in 2025 and should be
-re-checked at setup time.
-1. **npm account** — the npm account `alexander110` (owner `Alexander Agung
-   Raya`, the same person as the GitHub account `AlexanderDev2004`; npm
-   username and GitHub username do not need to match) must be 2FA-enabled and
-   own the package names. The `@g2w` scope is created with the first
-   published scoped package (public access). All eight names were unclaimed
-   when checked on npmjs.com (2026-10-28).
-2. **Trusted Publisher per package** — on npmjs.com, for each of the eight
-   packages, configured (2026-10-28, by the owner): repository
-   `AlexanderDev2004/g2w`, workflow filename `release.yml`, environment
-   `npm-release`. npm then accepts publishes whose OIDC token matches that
-   identity — **no npm token is ever created or stored.**
-3. **GitHub environment** — create the `npm-release` environment in the
-   repository settings with **required reviewers** (at least the
-   maintainer). This is the human approval gate for real publishes. The
-   workflow references it as `environment: npm-release`. **Done
-   (2026-10-28):** the environment exists with required reviewer
-   `AlexanderDev2004` and a custom deployment branch policy allowing only
-   `main`; the workflow also gates the publish job on
-   `github.ref == 'refs/heads/main'`.
-4. **Verify** — the first real publish is the verification. Until then, do
-   not claim OIDC, provenance, or trusted publishing works.
+When the workflow's publish job cannot complete (e.g. Trusted Publisher not
+yet configured for a package, or npm rejects a brand-new package name with
+E404), the maintainer can publish by hand:
+1. `npm login` locally (browser-based, 2FA; no tokens are stored in the repo).
+2. `pnpm -r pack --pack-destination packed`
+3. Publish the tarballs in the documented order — the **`./` prefix is
+   required**: without it npm parses `packed/g2w-core-0.1.0.tgz` as the
+   `user/repo` GitHub shorthand and fails with a git error.
+   `npm publish "./packed/g2w-core-X.Y.Z.tgz" --access public` (and so on).
+4. Verify each package: `npm view <name> version`. Registry propagation can
+   take a few minutes per package.
+5. Delete the `packed/` directory afterwards; it is a build artifact.
+
+This is how the 0.1.0 first release reached the registry.
+
+## One-time setup (complete — the 0.1.0 release is published)
+
+All npm-side prerequisites are done and proven by the published 0.1.0 release
+(2026-10-28). History worth knowing for future debugging:
+1. **npm account** — `alexander110` (owner `Alexander Agung Raya`, the same
+   person as the GitHub account `AlexanderDev2004`; npm username and GitHub
+   username do not need to match), 2FA-enabled. The `@g2w` scope is backed by
+   the npm **organization `g2w`** (unlimited public, created 2026-10-28).
+2. **First release was published manually** — on 2026-10-28 the maintainer
+   ran `npm login` locally and published the eight packed tarballs in the
+   documented order with `npm publish ./packed/<tarball> --access public`.
+   The workflow path was proven up to the registry write (validate job,
+   gates, environment approval, OIDC acceptance, provenance signing) but npm
+   rejected creating the brand-new names with E404, so the workflow could not
+   create them. Publishing each package once manually resolved it.
+3. **Trusted Publisher per package — still to configure** — now that the
+   packages exist, open each package's npmjs.com Settings page and configure
+   the Trusted Publisher: repository `AlexanderDev2004/g2w`, workflow
+   filename `release.yml`, environment `npm-release`. Until this is done for
+   a package, releases of that package fall back to the manual publish path
+   (see "Manual publish fallback" below). npm then accepts publishes whose
+   OIDC token matches that identity — **no npm token is ever created or
+   stored.**
+4. **GitHub environment** — done (2026-10-28): the `npm-release` environment
+   exists with required reviewer `AlexanderDev2004` and a custom deployment
+   branch policy allowing only `main`; the workflow also gates the publish
+   job on `github.ref == 'refs/heads/main'`.
 
 ### OIDC vs provenance vs publishing (not interchangeable)
 

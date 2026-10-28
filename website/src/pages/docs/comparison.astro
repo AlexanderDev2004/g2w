@@ -1,0 +1,342 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const LAST_REVIEWED = "2026-10-28";
+
+// Facts below were verified against official sources on 2026-10-28 and each
+// framework section links them. Cells without verifiable evidence say so.
+const rows: { dim: string; g2w: string; phaser: string; ritmo: string; jixi: string }[] = [
+  {
+    dim: "What it is",
+    g2w: "TypeScript-first framework: small packages composed at the application boundary",
+    phaser: "All-in-one 2D HTML5 game framework, commercially maintained",
+    ritmo: "Headless, type-safe ECS simulation runtime — the renderer is host code",
+    jixi: "No verifiable project found",
+  },
+  {
+    dim: "Rendering",
+    g2w: "PixiJS 8 adapter (WebGL / Canvas / WebGPU), all browser-verified per feature",
+    phaser: "Built-in node-based WebGL renderer (v4); Canvas renderer deprecated in v4",
+    ritmo: "None built in — adapters mirror entities to Pixi, Three.js, or canvas",
+    jixi: "—",
+  },
+  {
+    dim: "Scenes & lifecycle",
+    g2w: "Renderer-agnostic SceneManager with defined transitions and disposal semantics",
+    phaser: "Phaser.Scene with init/preload/create/update and 10 documented states",
+    ritmo: "No scene manager — spawn/despawn commands with deferred application",
+    jixi: "—",
+  },
+  {
+    dim: "Game loop",
+    g2w: "rAF with injectable FrameScheduler, seconds-based clamped deltaTime",
+    phaser: "RAF TimeStep with variable smoothed delta; fixed-step physics loop: none documented",
+    ritmo: "Fixed-step Clock (hz 60) with accumulator, clamping, and interpolation alpha",
+    jixi: "—",
+  },
+  {
+    dim: "Input",
+    g2w: "Keyboard, pointer, multi-touch (core contract) + DOM and Gamepad API adapters",
+    phaser: "Keyboard, pointer, drag & drop, multi-touch, gamepad — all built in",
+    ritmo: "Keyboard, gamepad, pointer, touch with actions, rebinding, and local multiplayer",
+    jixi: "—",
+  },
+  {
+    dim: "Physics",
+    g2w: "Not implemented (candidate work)",
+    phaser: "Arcade Physics + Matter.js bundled",
+    ritmo: "Swept circle collision in ritmo-math; no rigid-body engine",
+    jixi: "—",
+  },
+  {
+    dim: "Audio",
+    g2w: "AudioManager contract + @g2w/audio-web backend with an explicit autoplay policy",
+    phaser: "Built-in SoundManager (Web Audio + HTML5 Audio, spatial audio, autoplay unlock)",
+    ritmo: "Not built in",
+    jixi: "—",
+  },
+  {
+    dim: "TypeScript",
+    g2w: "Written in strict TypeScript end to end; core has zero runtime dependencies",
+    phaser: "JavaScript source with generated .d.ts definitions",
+    ritmo: "TypeScript ≥5.9 strict; permission-checked systems make misuse a compile error",
+    jixi: "—",
+  },
+  {
+    dim: "Architecture style",
+    g2w: "Explicit ownership, small strict contracts, adapters at the edge",
+    phaser: "Game Objects via component mixins; plugin system in core",
+    ritmo: "ECS: permission-checked queries, relations, events, snapshots, seeded RNG",
+    jixi: "—",
+  },
+  {
+    dim: "AI/agent support",
+    g2w: "AGENTS.md governance, deterministic-test discipline, DevTools read-only overlay",
+    phaser: "Official MCP server, .md versions of every docs page, 28 in-repo agent skills, Phaser AE",
+    ritmo: "SKILL.md shipped in the npm package, llms.txt, oxlint plugin, replay-as-test devtools",
+    jixi: "—",
+  },
+  {
+    dim: "Maturity",
+    g2w: "v0.1.0, 8 packages on npm (2026-10-28); pre-1.0, API may change",
+    phaser: "Since 2013; Phaser 4.2.1; ~40.6k stars (GitHub API, 2026-10-28)",
+    ritmo: "First npm publish 2026-10-17 (v0.18.0, 0.x); 127 stars (GitHub API, 2026-10-28)",
+    jixi: "—",
+  },
+  {
+    dim: "License",
+    g2w: "MIT",
+    phaser: "MIT",
+    ritmo: "MIT",
+    jixi: "—",
+  },
+];
+
+const differentiators = [
+  {
+    kind: "Verified fact",
+    text: "Small, strict packages: @g2w/core has zero runtime dependencies and never touches a rendering technology or browser global — enforced by architecture tests, not conventions.",
+  },
+  {
+    kind: "Verified fact",
+    text: "Renderer-agnostic core with three browser-verified PixiJS backends: WebGL, Canvas, and WebGPU each pass the same 12-feature smoke in a real browser (R6-3).",
+  },
+  {
+    kind: "Verified fact",
+    text: "Deterministic, lifecycle-complete semantics: scene transitions, disposal races, texture ownership, and adapter rollback are pinned by regression tests — 449+ tests across the monorepo.",
+  },
+  {
+    kind: "Verified fact",
+    text: "AI-agent-ready by policy: AGENTS.md defines agent boundaries, DevTools observes the running game read-only, and every milestone ships with evidence, not claims.",
+  },
+  {
+    kind: "Intention",
+    text: "The Effect-based G2WGame runtime is the primary application path while core stays Effect-free — a deliberate split, tested and documented (E3/E4).",
+  },
+  {
+    kind: "Ambition",
+    text: "3D via a future Three.js adapter (R8) proving the renderer contract generalizes — exploratory, gated on a stable-contract release cycle, not started.",
+  },
+];
+
+const phaserBetter = [
+  "You need physics (Arcade/Matter), tilemaps, cameras, tweens, or particles today — Phaser ships all of them built in; g2w lists them as uncommitted candidate work.",
+  "You are shipping a real game now and want 13 years of battle-tested behavior and a huge example/tutorial ecosystem.",
+  "You want agent assistance with mature official tooling: Phaser's MCP server, .md docs, and 28 skills are ahead of g2w's AGENTS.md + DevTools approach.",
+  "You prefer one install and one mental model over composing eight small packages yourself.",
+];
+
+const g2wBetter = [
+  "You need strict, explicit resource ownership and lifecycle semantics you can audit — every rule is tested, and documented ≠ implemented.",
+  "You want a dependency-free core and the freedom to swap or add renderers (the same conformance suite any future adapter must pass).",
+  "You are building with AI agents and want a framework whose invariants are enforced by deterministic tests rather than documented hopes.",
+  "You want your game logic free of any rendering API — g2w scenes and objects are renderer-agnostic by contract.",
+];
+
+const ritmoNotes = [
+  "Ritmo is not a competitor for the same job: it is a headless ECS simulation runtime with no rendering, scenes, or audio — you bring the renderer (it ships Pixi and Three.js adapters) — see ritmo.typeonce.dev.",
+  "Its type-safety approach (permission-checked systems, compile-error guidance for agents) is the closest philosophical neighbor to g2w's strict-contract design, but applied at ECS level rather than framework level.",
+  "It is very young: first npm publish 2026-10-17, 0.x with documented API changes between versions. Its fixed-step clock, rollback netcode, and replay-as-test devtools are genuinely ahead of anything g2w has.",
+];
+
+const sources = [
+  { name: "Phaser 4 release & changelog", url: "https://github.com/phaserjs/phaser/blob/master/changelog/v4/4.0/CHANGELOG-v4.0.0.md" },
+  { name: "Phaser README (AI-assisted development, TypeScript)", url: "https://github.com/phaserjs/phaser#readme" },
+  { name: "Phaser agent index (llms.txt)", url: "https://phaser.io/llms.txt" },
+  { name: "Phaser MCP server", url: "https://phaser.io/oss/docs/mcp" },
+  { name: "Ritmo documentation", url: "https://ritmo.typeonce.dev/" },
+  { name: "Ritmo repository", url: "https://github.com/typeonce-dev/ritmo" },
+  { name: "g2w ROADMAP.md (evidence per milestone)", url: "https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md" },
+  { name: "g2w v0.1.0 release", url: "https://github.com/AlexanderDev2004/g2w/releases/tag/v0.1.0" },
+];
+---
+
+<Base
+  title="Framework Comparison · g2w docs"
+  description="An evidence-based comparison of g2w with Phaser and Ritmo: architecture, rendering, input, TypeScript, agent support, and maturity — with sources and honest limits."
+>
+  <div class="docs">
+    <DocsSidebar active="comparison" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / framework-comparison</div>
+      <h1>Framework Comparison</h1>
+      <p>
+        A fair, evidence-based look at g2w next to <b>Phaser</b> and
+        <b>Ritmo</b>. Every fact below was verified against official sources on
+        {LAST_REVIEWED} and linked in the sources section; cells without
+        verifiable evidence say <i>Not verified</i> instead of guessing. If a
+        claim here ever conflicts with reality, the source link wins.
+      </p>
+
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">jixi.js</span>
+        <span>
+          A comparison with <b>jixi.js</b> was requested, but <b>no verifiable
+          project by that name exists</b> — there is no npm package
+          (<code>registry.npmjs.org/jixi.js</code> → Not found) and zero GitHub
+          repositories matching <code>jixi.js</code> or <code>jixijs</code>
+          (GitHub search API, checked {LAST_REVIEWED}). The closest real projects
+          are <code>jixi</code> (an unmaintained PixiJS engine, last npm publish
+          2021) and <code>@jixi/js</code> (an unrelated AI SDK). If you meant one
+          of those — or another name — the comparison column will be filled in.
+        </span>
+      </div>
+
+      <h2 id="table">Side by side</h2>
+      <div class="cmp-scroll">
+        <table class="cmp-table">
+          <thead>
+            <tr>
+              <th>Dimension</th>
+              <th>g2w</th>
+              <th>Phaser</th>
+              <th>Ritmo</th>
+              <th>jixi.js</th>
+            </tr>
+          </thead>
+          <tbody>
+            {rows.map((r) => (
+              <tr>
+                <th scope="row">{r.dim}</th>
+                <td>{r.g2w}</td>
+                <td>{r.phaser}</td>
+                <td>{r.ritmo}</td>
+                <td class="na">{r.jixi}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="different">What Makes g2w Different?</h2>
+      <p>Separated into what is verified today, what is intended, and what is ambition:</p>
+      <ul class="diff-list">
+        {differentiators.map((d) => (
+          <li>
+            <span class={d.kind === "Verified fact" ? "kind fact" : d.kind === "Intention" ? "kind intent" : "kind ambition"}>
+              {d.kind}
+            </span>
+            <span>{d.text}</span>
+          </li>
+        ))}
+      </ul>
+
+      <h2 id="when-phaser">When Phaser Is the More Practical Choice Today</h2>
+      <p>
+        This page would not be honest without this section. g2w is a young,
+        deliberately small framework; Phaser is a mature, commercially maintained
+        one. Choose Phaser when:
+      </p>
+      <ul>
+        {phaserBetter.map((p) => <li>{p}</li>)}
+      </ul>
+      <p>And choose g2w when:</p>
+      <ul>
+        {g2wBetter.map((p) => <li>{p}</li>)}
+      </ul>
+
+      <h2 id="ritmo">About Ritmo</h2>
+      <ul>
+        {ritmoNotes.map((p) => <li>{p}</li>)}
+      </ul>
+
+      <h2 id="sources">Sources</h2>
+      <p>
+        All facts were checked on {LAST_REVIEWED} against these official sources
+        (framework counts like stars come from the GitHub API on that date):
+      </p>
+      <ul class="src-list">
+        {sources.map((s) => (
+          <li><a href={s.url}>{s.name}</a></li>
+        ))}
+      </ul>
+      <p>
+        Framework community numbers (stars, forks) change daily and are only
+        meaningful as order-of-magnitude context, not rankings. No performance
+        benchmarks are claimed by anyone in this table — g2w's own roadmap
+        requires a reproducible benchmark harness before any performance claim.
+      </p>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        See what has actually shipped in <a href="/docs/roadmap">Roadmap</a>, or
+        start building with <a href="/docs/installation">Installation</a>.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Framework Comparison</a>
+      <a href="#table">Side by side</a>
+      <a href="#different">What Makes g2w Different?</a>
+      <a href="#when-phaser">When Phaser wins today</a>
+      <a href="#ritmo">About Ritmo</a>
+      <a href="#sources">Sources</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .cmp-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cmp-table {
+    min-width: 720px;
+  }
+  .cmp-table th[scope="row"] {
+    text-align: left;
+    white-space: nowrap;
+    font-family: var(--mono);
+    font-size: 12px;
+  }
+  .cmp-table td {
+    font-size: 13px;
+    vertical-align: top;
+  }
+  .cmp-table td.na {
+    color: var(--ink-40);
+    font-style: italic;
+  }
+  .diff-list {
+    list-style: none;
+    padding: 0;
+  }
+  .diff-list li {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    margin-bottom: 10px;
+  }
+  .kind {
+    flex: 0 0 auto;
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border: 1.5px solid var(--ink);
+    margin-top: 2px;
+    white-space: nowrap;
+  }
+  .kind.fact {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .kind.intent {
+    background: transparent;
+    color: var(--ink);
+  }
+  .kind.ambition {
+    background: transparent;
+    color: var(--ink-60);
+    border-color: var(--line);
+  }
+  .src-list {
+    font-size: 13.5px;
+  }
+</style>

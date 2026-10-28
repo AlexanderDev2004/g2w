@@ -1,0 +1,235 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const LAST_REVIEWED = "2026-10-28";
+
+// Every status below is copied from ROADMAP.md on the date above and linked
+// to its evidence in the full roadmap document. This page is a summary; the
+// GitHub document is the source of truth.
+type Status = "done" | "progress" | "exploratory";
+
+const shipped = [
+  { id: "mvp", name: "MVP 0 – 1F", what: "Foundation: pnpm monorepo, strict TypeScript, renderer contract, PixiJS adapter, Game lifecycle + frame loop, SceneManager, DOM-free InputState, AssetManager, Transform2D/Sprite2D, GameObject layer, audio contract, scene-ownership hardening." },
+  { id: "input", name: "R5 – Gamepad & touch", what: "Multi-touch contacts in core InputState via Pointer Events, DOM-free GamepadState with an injectable polling source (@g2w/input-gamepad). 41 deterministic tests." },
+  { id: "e3", name: "E3 – Adapter lifecycle hardening", what: "Failure-safe init/attach rollback, concurrent and repeated lifecycle calls, terminal disposal, listener cleanup for all imperative adapters." },
+  { id: "e4", name: "E4 – Effect runtime", what: "G2WGame: the game lifecycle orchestrated by a managed Effect runtime with LIFO finalizers and idempotent disposal. Core stays Effect-free; the frame hot path never allocates an Effect." },
+  { id: "r1", name: "R1 – Texture ownership", what: "PixiRenderer.dispose() destroys stage display objects only — never textures. One framework-wide, non-destructive texture lifetime, pinned by hazard tests." },
+  { id: "r2", name: "R2 – Game objects", what: "GameObject + GameObjectCollection in core: claimed, snapshot-iterated update/destroy registry driven by the existing loop. No ECS, no scene graph — deliberately minimal." },
+  { id: "r3", name: "R3 – Logical resolution & resize", what: "Explicit logical width/height, runtime resize(), pointer mapping under CSS scaling. Fixed logical resolution with proportional display scaling." },
+  { id: "r4", name: "R4 – Audio", what: "AudioManager contract in core + @g2w/audio-web Web Audio backend with an explicit autoplay policy (suspended-context play() throws; resume() needs a user gesture)." },
+  { id: "r11", name: "R11 – Anchors & z-ordering", what: "Normalized Anchor2D and zIndex on Sprite2D, applied through view.sync(); stable sort for equal z values." },
+  { id: "r6", name: "R6 – Renderer audit & backends", what: "Backend preference + actual-backend reporting (R6-1), a shared renderer conformance suite (R6-2), and per-backend feature verification: 12/12 features on WebGL, Canvas, and WebGPU in a real browser (R6-3)." },
+  { id: "devtools", name: "DevTools MVP", what: "@g2w/devtools: a read-only runtime overlay (scenes, objects, transforms, FPS, watched input, logs). Dev-only, excluded from production builds." },
+  { id: "r7", name: "R7 – create-g2w CLI", what: "Zero-dependency scaffold CLI with a TypeScript + Vite template, deterministic tests, and local git init only." },
+  { id: "r10", name: "R10 – npm publishing", what: "All eight packages published to npm at 0.1.0 (2026-10-28) via OIDC trusted publishing, --provenance, and the protected npm-release environment. Tagged v0.1.0." },
+];
+
+const active = [
+  { id: "r6-ops", name: "R6 – Dependency & supply-chain maintenance", what: "Ongoing: weekly Dependabot updates, pnpm audit gates in release review, install-lifecycle-script review for every new dependency." },
+];
+
+const exploratory = [
+  { id: "r8", name: "R8 – Three.js adapter for 3D", what: "A third renderer adapter proving the renderer contract generalizes beyond 2D. Gate: core contracts frozen for one release cycle without a breaking 2D change." },
+  { id: "r9", name: "R9 – Integrations (React, Vue)", what: "Thin bindings embedding g2w in common stacks, one package each, public entry points only." },
+];
+
+const candidates = [
+  "Physics and collision",
+  "Camera support",
+  "Tilemaps",
+  "A full animation system (tweening, keyframes, skeletal)",
+  "Sprite batching helpers and texture atlases",
+  "Manifest-based bulk asset loading",
+  "Action mapping / input rebinding",
+  "Scene stacks and transition effects",
+  "Performance benchmarks",
+];
+
+const risks = [
+  { name: "Pre-1.0 API", what: "The packages are published at 0.1.0, but public contracts may still change; nothing is semver-stable yet." },
+  { name: "PixiJS shared cache", what: "No supported way to prove exclusive texture ownership; the non-destructive policy (R1) trades memory for safety — textures live until page unload unless explicitly unloaded." },
+  { name: "AI-agent skills content", what: "Dependency-provided agent skills are reviewed on each PixiJS update." },
+];
+
+const badge = (s: Status) =>
+  s === "done" ? "badge done" : s === "progress" ? "badge progress" : "badge exploratory";
+const label = (s: Status) => (s === "done" ? "done" : s === "progress" ? "in progress" : "exploratory");
+---
+
+<Base
+  title="Roadmap · g2w docs"
+  description="Where g2w is going: shipped milestones, work in progress, exploratory directions, and explicitly uncommitted candidate work — each with evidence."
+>
+  <div class="docs">
+    <DocsSidebar active="roadmap" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / roadmap</div>
+      <h1>Roadmap</h1>
+      <p>
+        This is an evidence-based summary of
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">ROADMAP.md</a>,
+        which is the source of truth: every status there is backed by tests,
+        smoke runs, or a released artifact — never by a stub. <b>Documented ≠
+        implemented</b> is a roadmap principle: planned features are listed
+        here, never stubbed in code.
+      </p>
+      <p class="reviewed mono">Last reviewed against ROADMAP.md: {LAST_REVIEWED}</p>
+
+      <h2 id="shipped">Shipped</h2>
+      <p>All verified by the deterministic test suite, CI, or a released npm artifact:</p>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Milestone</th><th>What landed</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {shipped.map((row) => (
+              <tr>
+                <td class="name">{row.name}</td>
+                <td class="desc">{row.what}</td>
+                <td><span class={badge("done")}>{label("done")}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Evidence</span>
+        <span>
+          The release claim is checkable right now:
+          <code>npm view @g2w/core version</code> returns <code>0.1.0</code>, and the
+          <a href="https://github.com/AlexanderDev2004/g2w/releases/tag/v0.1.0">v0.1.0 release</a>
+          exists on GitHub. Per-milestone test counts and smoke results are in the
+          <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">full roadmap</a>.
+        </span>
+      </div>
+
+      <h2 id="active">In progress</h2>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Work</th><th>Scope</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {active.map((row) => (
+              <tr>
+                <td class="name">{row.name}</td>
+                <td class="desc">{row.what}</td>
+                <td><span class={badge("progress")}>{label("progress")}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="exploratory">Exploratory</h2>
+      <p>
+        Directions under consideration — they may change shape or be dropped.
+        Neither has started; each lists the gate that must pass first.
+      </p>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Direction</th><th>Shape</th><th>Status</th></tr>
+          </thead>
+          <tbody>
+            {exploratory.map((row) => (
+              <tr>
+                <td class="name">{row.name}</td>
+                <td class="desc">{row.what}</td>
+                <td><span class={badge("exploratory")}>{label("exploratory")}</span></td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h2 id="candidates">Candidate work — not yet committed</h2>
+      <p>
+        These areas have <b>no committed milestone or priority</b>. They are listed
+        so their absence is explicit, not accidental:
+      </p>
+      <ul>
+        {candidates.map((c) => <li>{c}</li>)}
+      </ul>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Honest gap</span>
+        <span>
+          If you need physics, cameras, tilemaps, or animation today,
+          <a href="/docs/comparison">mature all-in-one frameworks</a> already ship
+          them built in. g2w's advantage is a strict, small core with explicit
+          ownership — not breadth of built-in systems.
+        </span>
+      </div>
+
+      <h2 id="risks">Risks and open questions</h2>
+      <ul>
+        {risks.map((r) => (
+          <li><b>{r.name}</b> — {r.what}</li>
+        ))}
+      </ul>
+
+      <h2 id="propose">Proposing changes</h2>
+      <p>
+        Open an issue describing the proposed milestone with objective, scope,
+        dependencies, and acceptance criteria. Roadmap changes are made by the
+        maintainers after discussion — see
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/CONTRIBUTING.md">CONTRIBUTING.md</a>.
+      </p>
+
+      <h2 id="next">Next steps</h2>
+      <p>
+        Compare g2w with other frameworks in
+        <a href="/docs/comparison">Framework Comparison</a>, or read the full
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md">ROADMAP.md</a>
+        with per-milestone evidence.
+      </p>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Roadmap</a>
+      <a href="#shipped">Shipped</a>
+      <a href="#active">In progress</a>
+      <a href="#exploratory">Exploratory</a>
+      <a href="#candidates">Candidate work</a>
+      <a href="#risks">Risks</a>
+      <a href="#propose">Proposing changes</a>
+      <a href="#next">Next steps</a>
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .reviewed {
+    font-size: 12px;
+    color: var(--ink-40);
+    margin-top: -8px;
+  }
+  .badge {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 10.5px;
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    padding: 2px 8px;
+    border: 1.5px solid var(--ink);
+    white-space: nowrap;
+  }
+  .badge.done {
+    background: var(--ink);
+    color: var(--paper);
+  }
+  .badge.progress {
+    background: transparent;
+    color: var(--ink);
+    border-color: var(--ink);
+  }
+  .badge.exploratory {
+    background: transparent;
+    color: var(--ink-60);
+    border-color: var(--line);
+  }
+</style>

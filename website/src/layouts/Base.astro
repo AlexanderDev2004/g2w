@@ -14,7 +14,9 @@ const {
   description = "g2w (Game to Website) is a TypeScript-first, AI-agent-ready framework for building and shipping HTML5 web games.",
 } = Astro.props;
 
-const ogImage = "/og.png";
+// Cache-busting query so social platforms re-fetch the image instead of
+// serving a cached preview from before the asset existed. Bump on changes.
+const ogImage = "/og.png?v=20261028";
 const ogImageAlt = "g2w — Game to Website: pixel lockup of a gamepad, G 2 W, and a browser window";
 const site = "https://g2w.alexanderar.com";
 ---

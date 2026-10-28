@@ -144,8 +144,7 @@ const usageCode = [
           class="mono"
           style="font-size: 11.5px; color: var(--ink-40); margin-top: 14px"
         >
-          // the @g2w/* packages are not yet published to npm — resolved from packed
-          tarballs until the release lands
+          // @g2w/* packages are on npm at 0.1.0 — early 0.x release, the API may still change
         </p>
       </div>
     </section>
@@ -267,10 +266,11 @@ const usageCode = [
           <span class="tag">Status</span>
           <span>
             <b>Honest status:</b> the <span class="mono">@g2w/*</span> packages are
-            <b>not published to npm yet</b>. Until the release lands,
-            <span class="mono">pnpm create g2w</span> works only after publishing —
-            generated projects resolve packages from packed tarballs. 2D rendering over
-            WebGL is done and browser-verified; 3D is exploratory (Roadmap R8).
+            <b>on npm at 0.1.0</b> (released 2026-10-28) — an early 0.x release, so
+            <span class="mono">pnpm create g2w</span> scaffolds projects that pin the
+            released packages, and the public API may still change before 1.0. 2D
+            rendering over WebGL is done and browser-verified; 3D is exploratory
+            (Roadmap R8).
           </span>
         </div>
       </div>

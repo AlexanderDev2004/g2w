@@ -1,14 +1,15 @@
 # Release guide (R10)
 
-How g2w packages are versioned, rehearsed, and — eventually — published. This
+How g2w packages are versioned, rehearsed, and published. This
 guide is the authority for the release process; the README stays concise and
 links here.
 
-**Current status (R10 Phase 2):** the release _infrastructure_ is in place and
-rehearsed. **Nothing has ever been published.** No tag exists. The `@g2w/*`
-packages and `create-g2w` are not on npm. Publishing additionally requires the
-manual npm/GitHub setup in [One-time setup](#one-time-setup), which has not
-been performed.
+**Current status (R10 Phase 3 — released):** all eight publishable packages are
+**published to npm at 0.1.0** (2026-10-28) and tagged
+[`v0.1.0`](https://github.com/AlexanderDev2004/g2w/releases/tag/v0.1.0). The
+first release used the full process below: the one-time npm/GitHub setup in
+[One-time setup](#one-time-setup) has been performed, and the release ran
+through the manual `release.yml` dispatch with its gates intact.
 
 ## Package inventory and release order
 

@@ -16,12 +16,6 @@ const addCode = [
   `<span class="fn">pnpm</span> add pixi.js <span class="cm"># renderer-pixi peer: PixiJS 8</span>`,
 ].join("\n");
 
-const tarballCode = [
-  `<span class="cm"># from the monorepo root: build + pack every @g2w/* package</span>`,
-  `<span class="fn">pnpm</span> build`,
-  `<span class="fn">pnpm</span> --filter <span class="str">"./packages/*"</span> pack`,
-].join("\n");
-
 const treeCode = [
   `my-game/`,
   `├── index.html            <span class="cm"># #game canvas + #error box</span>`,
@@ -98,16 +92,11 @@ const treeCode = [
       <div class="callout" style="box-shadow: none">
         <span class="tag">Status</span>
         <span>
-          <b>The @g2w/* packages are not published to npm yet.</b> Until the release
-          lands (Roadmap R10), <code>pnpm create g2w</code> resolves only from packed
-          tarballs. Clone the
-          <a href="https://github.com/AlexanderDev2004/g2w">monorepo</a>, build, and
-          pack the packages yourself:
+          <b>All @g2w/* packages are published to npm at 0.1.0</b> (released
+          2026-10-28 via OIDC trusted publishing). This is an early 0.x release:
+          the public API may still change before 1.0. The scaffolded project
+          pins <code>@g2w/*</code> at the released version.
         </span>
-      </div>
-      <div class="codeblock" style="box-shadow: none">
-        <div class="cb-head"><span>shell</span></div>
-        <pre><code set:html={tarballCode} /></pre>
       </div>
 
       <h2 id="next">Next steps</h2>

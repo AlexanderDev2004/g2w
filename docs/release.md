@@ -124,7 +124,11 @@ re-checked at setup time.
 3. **GitHub environment** — create the `npm-release` environment in the
    repository settings with **required reviewers** (at least the
    maintainer). This is the human approval gate for real publishes. The
-   workflow references it as `environment: npm-release`.
+   workflow references it as `environment: npm-release`. **Done
+   (2026-10-28):** the environment exists with required reviewer
+   `AlexanderDev2004` and a custom deployment branch policy allowing only
+   `main`; the workflow also gates the publish job on
+   `github.ref == 'refs/heads/main'`.
 4. **Verify** — the first real publish is the verification. Until then, do
    not claim OIDC, provenance, or trusted publishing works.
 

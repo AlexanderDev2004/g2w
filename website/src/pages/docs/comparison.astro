@@ -163,8 +163,8 @@ const sources = [
       <div class="crumb">docs / framework-comparison</div>
       <h1>Framework Comparison</h1>
       <p>
-        A fair, evidence-based look at g2w next to <b>Phaser</b> and
-        <b>Ritmo</b>. Every fact below was verified against official sources on
+        A fair, evidence-based look at g2w next to <b>Phaser</b> and{" "}
+        <b>Ritmo</b>. Every fact below was verified against official sources on{" "}
         {LAST_REVIEWED} and linked in the sources section; cells without
         verifiable evidence say <i>Not verified</i> instead of guessing. If a
         claim here ever conflicts with reality, the source link wins.
@@ -200,10 +200,10 @@ const sources = [
             {rows.map((r) => (
               <tr>
                 <th scope="row">{r.dim}</th>
-                <td>{r.g2w}</td>
-                <td>{r.phaser}</td>
-                <td>{r.ritmo}</td>
-                <td class="na">{r.jixi}</td>
+                <td data-label="g2w">{r.g2w}</td>
+                <td data-label="Phaser">{r.phaser}</td>
+                <td data-label="Ritmo">{r.ritmo}</td>
+                <td class="na" data-label="jixi.js">{r.jixi}</td>
               </tr>
             ))}
           </tbody>
@@ -338,5 +338,52 @@ const sources = [
   }
   .src-list {
     font-size: 13.5px;
+  }
+  /* Mobile: stack the comparison table into per-dimension cards so nothing
+     is clipped or hidden behind horizontal scrolling. The jixi.js column is
+     explained by the callout above, so it is omitted here. */
+  @media (max-width: 760px) {
+    .cmp-scroll {
+      overflow-x: visible;
+    }
+    .cmp-table {
+      min-width: 0;
+    }
+    .cmp-table thead {
+      display: none;
+    }
+    .cmp-table tbody tr {
+      display: block;
+      border: 1.5px solid var(--line);
+      background: var(--paper-2);
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .cmp-table th[scope="row"] {
+      display: block;
+      white-space: normal;
+      font-size: 13px;
+      border-bottom: 1.5px solid var(--ink);
+      padding-bottom: 8px;
+      margin-bottom: 10px;
+    }
+    .cmp-table td {
+      display: block;
+      padding: 6px 0;
+    }
+    .cmp-table td::before {
+      content: attr(data-label);
+      display: block;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.08em;
+      color: var(--ink-60);
+      margin-bottom: 2px;
+    }
+    .cmp-table td.na {
+      display: none;
+    }
   }
 </style>

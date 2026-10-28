@@ -431,6 +431,7 @@ a {
   border: 1px solid var(--line);
   padding: 1px 5px;
   color: var(--ink);
+  overflow-wrap: anywhere;
 }
 .prose pre {
   overflow-x: auto;

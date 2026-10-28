@@ -1,0 +1,195 @@
+---
+import Base from "../layouts/Base.astro";
+
+interface Game {
+  name: string;
+  tagline: string;
+  description: string;
+  url: string;
+  repo?: string;
+  author: string;
+  packages: string[];
+  controls: string;
+  featured?: boolean;
+}
+
+const games: Game[] = [
+  {
+    name: "INK-DASH",
+    tagline: "A monochrome pixel runner",
+    description:
+      "The first game built with g2w. An ink hero auto-runs through an endless monochrome world — jump spikes and columns, collect scarce orange embers, chase your best score. Three scenes (title → gameplay → game over), parallax background, persistent best score, and a dev-only DevTools overlay. Built entirely on the public g2w API.",
+    url: "https://ink-dash.pages.dev/",
+    author: "Alexander Agung Raya",
+    packages: ["@g2w/core", "@g2w/runtime", "@g2w/renderer-pixi", "@g2w/input-dom", "@g2w/devtools"],
+    controls: "Space / ↑ / tap to jump",
+    featured: true,
+  },
+];
+
+const wantYourGame = {
+  docs: "/docs/your-first-game",
+  repo: "https://github.com/AlexanderDev2004/g2w",
+};
+---
+
+<Base
+  title="Playground — g2w"
+  description="Games built with g2w, playable in your browser. Proof that the framework ships real games — and a place to show yours."
+>
+  <main>
+    <!-- ============ HERO ============ -->
+    <section class="hero" style="padding-bottom: 40px">
+      <div class="container">
+        <span class="hero-eyebrow">Built with g2w</span>
+        <h1 style="font-size: clamp(34px, 5vw, 52px)">Playground<span class="accent">.</span></h1>
+        <p class="sub" style="max-width: 640px">
+          Games real developers shipped with the framework — playable right here, right
+          now. The best answer to "can this framework actually make a game?" is pressing
+          Start.
+        </p>
+        <div class="hero-ctas">
+          <a class="btn btn-primary" href="#games">Play a game ↓</a>
+          <a class="btn btn-dark" href={wantYourGame.docs}>Build your own →</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ GAMES ============ -->
+    <section class="section" id="games">
+      <div class="container">
+        <div class="section-head">
+          <div class="section-eyebrow">01 · The collection</div>
+          <h2>Playable, right now</h2>
+          <p>Every entry runs on the public <b class="mono">@g2w/*</b> API — no engine forks, no bypasses.</p>
+        </div>
+
+        <div class="playground-list">
+          {
+            games.map((game) => (
+              <article class="game-card" class:list={{ featured: game.featured }}>
+                <div class="game-body">
+                  <div class="game-head">
+                    <h3 class="mono">{game.name}</h3>
+                    <span class="badge badge-done">
+                      <span class="dot" />
+                      Playable
+                    </span>
+                  </div>
+                  <p class="game-tagline">{game.tagline}</p>
+                  <p class="game-desc">{game.description}</p>
+                  <div class="game-meta">
+                    <span class="meta-label">Controls</span>
+                    <span class="mono">{game.controls}</span>
+                  </div>
+                  <div class="game-meta">
+                    <span class="meta-label">Built with</span>
+                    <span class="mono">{game.packages.join(" · ")}</span>
+                  </div>
+                  <div class="game-meta">
+                    <span class="meta-label">Author</span>
+                    <span>{game.author}</span>
+                  </div>
+                </div>
+                <div class="game-actions">
+                  <a class="btn btn-primary" href={game.url} target="_blank" rel="noopener noreferrer">
+                    ▶ Play now
+                  </a>
+                  {game.repo ? (
+                    <a class="btn" href={game.repo} target="_blank" rel="noopener noreferrer">
+                      Source
+                    </a>
+                  ) : null}
+                </div>
+              </article>
+            ))
+          }
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ SUBMIT CTA ============ -->
+    <section class="section" style="padding-top: 0">
+      <div class="container">
+        <div class="callout">
+          <span class="tag">Yours here</span>
+          <span>
+            Built something with g2w? Ship it to a URL, then open a PR or an issue on the{" "}
+            <a href={wantYourGame.repo}>g2w repo</a> with the link, controls, and package
+            list — it lands in this collection. Start from{" "}
+            <a href={wantYourGame.docs}>Your First Game</a> if you haven't yet.
+          </span>
+        </div>
+      </div>
+    </section>
+  </main>
+</Base>
+
+<style>
+  .playground-list {
+    display: grid;
+    gap: 24px;
+  }
+
+  .game-card {
+    border: 2px solid var(--ink);
+    background: var(--paper);
+    box-shadow: 6px 6px 0 var(--ink);
+    padding: 28px;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .game-card.featured {
+    box-shadow: 6px 6px 0 var(--orange);
+  }
+
+  .game-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .game-head h3 {
+    font-size: 22px;
+    letter-spacing: 0.02em;
+    margin: 0;
+  }
+
+  .game-tagline {
+    color: var(--orange);
+    font-weight: 700;
+    margin: 0;
+    font-size: 14px;
+  }
+
+  .game-desc {
+    color: var(--ink-60);
+    margin: 0;
+    max-width: 70ch;
+  }
+
+  .game-meta {
+    display: flex;
+    gap: 10px;
+    align-items: baseline;
+    font-size: 13px;
+    flex-wrap: wrap;
+  }
+
+  .meta-label {
+    min-width: 76px;
+    color: var(--ink-40);
+    text-transform: uppercase;
+    letter-spacing: 0.08em;
+    font-size: 11px;
+  }
+
+  .game-actions {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+</style>

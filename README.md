@@ -66,7 +66,7 @@ flowchart TB
     PIXI --> CORE
     THREE -.->|"future adapter (R8)"| CORE
     PIXI --> WEBGL
-    PIXI -->|verified backends (R6-2)| CANVAS
+    PIXI -->|"verified backends (R6-2)"| CANVAS
     INPUT --> DOMAPI
     INPUT --> PADAPI
     AUDIO --> WEBAUDIO

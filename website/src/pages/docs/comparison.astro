@@ -140,6 +140,22 @@ const ritmoNotes = [
   "It is very young: first npm publish 2026-10-17, 0.x with documented API changes between versions. Its fixed-step clock, rollback netcode, and replay-as-test devtools are genuinely ahead of anything g2w has.",
 ];
 
+// Verified against the npm registry and GitHub API on 2026-10-28. Feature
+// columns (physics, 2D/3D) reflect each project's official documentation.
+const ecosystem = [
+  { name: "g2w", g2w: true, type: "Small packages you compose", dim: "2D (3D planned)", physics: "Not yet (candidate work)", lang: "TypeScript strict", license: "MIT", status: "0.1.0, 8 packages on npm" },
+  { name: "Phaser", type: "All-in-one 2D framework", dim: "2D", physics: "Arcade + Matter.js", lang: "JavaScript + generated .d.ts", license: "MIT", status: "4.2.1, ~40.6k stars" },
+  { name: "PixiJS", type: "Rendering engine only", dim: "2D", physics: "None", lang: "TypeScript", license: "MIT", status: "8.22.0, ~48.6k stars" },
+  { name: "Three.js", type: "3D library", dim: "3D", physics: "None in core", lang: "JavaScript", license: "MIT", status: "r186, ~117k stars" },
+  { name: "Babylon.js", type: "Full 3D engine", dim: "3D", physics: "Havok / Cannon plugins", lang: "TypeScript", license: "Apache-2.0", status: "9.32.1, ~26.2k stars" },
+  { name: "Excalibur", type: "TypeScript-first 2D engine", dim: "2D", physics: "Arcade", lang: "TypeScript", license: "BSD-2-Clause", status: "0.32.0 (still 0.x)" },
+  { name: "Kaplay", type: "Quick-and-fun game library (Kaboom successor)", dim: "2D", physics: "Simple built-in", lang: "JavaScript / TypeScript", license: "MIT", status: "3001.0.19" },
+  { name: "MelonJS", type: "Tilemap-focused 2D engine", dim: "2D", physics: "Built-in", lang: "JavaScript / TypeScript", license: "MIT", status: "20.11.0" },
+  { name: "PlayCanvas", type: "3D engine + visual editor", dim: "3D", physics: "Via module", lang: "TypeScript", license: "MIT", status: "2.23.3" },
+  { name: "GDevelop", type: "No-code / visual engine", dim: "2D", physics: "Via behaviors", lang: "No coding required", license: "MIT", status: "Editor-based; no npm package" },
+  { name: "p5.js", type: "Creative coding library", dim: "2D", physics: "None", lang: "JavaScript", license: "LGPL-2.1", status: "2.3.4" },
+];
+
 const sources = [
   { name: "Phaser 4 release & changelog", url: "https://github.com/phaserjs/phaser/blob/master/changelog/v4/4.0/CHANGELOG-v4.0.0.md" },
   { name: "Phaser README (AI-assisted development, TypeScript)", url: "https://github.com/phaserjs/phaser#readme" },
@@ -242,6 +258,64 @@ const sources = [
         {ritmoNotes.map((p) => <li>{p}</li>)}
       </ul>
 
+      <h2 id="ecosystem">The Broader Ecosystem</h2>
+      <p>
+        G2W next to ten popular web game frameworks and engines. Version, license,
+        and status facts were verified against the npm registry and the GitHub API
+        on {LAST_REVIEWED}; the feature columns (physics, 2D/3D) reflect each
+        project's official documentation and were not re-audited line by line
+        like the deep comparison above.
+      </p>
+      <div class="cmp-scroll">
+        <table class="cmp-table eco-table">
+          <thead>
+            <tr>
+              <th>Framework</th>
+              <th>Type</th>
+              <th>2D/3D</th>
+              <th>Physics</th>
+              <th>Language</th>
+              <th>License</th>
+              <th>Status (verified {LAST_REVIEWED})</th>
+            </tr>
+          </thead>
+          <tbody>
+            {ecosystem.map((r) => (
+              <tr class={r.g2w ? "eco-g2w" : undefined}>
+                <th scope="row">{r.name}</th>
+                <td data-label="Type">{r.type}</td>
+                <td data-label="2D/3D">{r.dim}</td>
+                <td data-label="Physics">{r.physics}</td>
+                <td data-label="Language">{r.lang}</td>
+                <td data-label="License">{r.license}</td>
+                <td data-label="Status">{r.status}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+
+      <h3 id="boxes">Where everything sits</h3>
+      <p>Every project above falls into one of three boxes:</p>
+      <ol>
+        <li>
+          <b>All-in-one engines</b> (Phaser, Excalibur, MelonJS, Kaplay, Babylon.js,
+          PlayCanvas, GDevelop) — every system built in, but you live inside their
+          architecture and bundle; the renderer is not swappable.
+        </li>
+        <li>
+          <b>Pure renderers / libraries</b> (PixiJS, Three.js, p5.js) — flexible,
+          but the game loop, scenes, input, assets, and lifecycle are all yours to
+          build; PixiJS is in fact what G2W's renderer adapter wraps.
+        </li>
+        <li>
+          <b>G2W's box</b> — framework structure (loop, scenes, input, assets,
+          audio, lifecycle) with a renderer-agnostic, zero-dependency core. The
+          only project in this list that ships "swap the renderer" as a tested
+          contract rather than a concept.
+        </li>
+      </ol>
+
       <h2 id="sources">Sources</h2>
       <p>
         All facts were checked on {LAST_REVIEWED} against these official sources
@@ -273,6 +347,7 @@ const sources = [
       <a href="#different">What Makes g2w Different?</a>
       <a href="#when-phaser">When Phaser wins today</a>
       <a href="#ritmo">About Ritmo</a>
+      <a href="#ecosystem">The Broader Ecosystem</a>
       <a href="#sources">Sources</a>
       <a href="#next">Next steps</a>
     </aside>
@@ -338,6 +413,22 @@ const sources = [
   }
   .src-list {
     font-size: 13.5px;
+  }
+  .eco-table {
+    min-width: 860px;
+  }
+  .eco-table td {
+    font-size: 12.5px;
+  }
+  tr.eco-g2w th,
+  tr.eco-g2w td {
+    background: var(--paper);
+    border-top: 2px solid var(--ink);
+    border-bottom: 2px solid var(--ink);
+  }
+  tr.eco-g2w + tr th,
+  tr.eco-g2w + tr td {
+    border-top: 2px solid var(--ink);
   }
   /* Mobile: stack the comparison table into per-dimension cards so nothing
      is clipped or hidden behind horizontal scrolling. The jixi.js column is

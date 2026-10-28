@@ -154,46 +154,46 @@ jobs:
         run: |
           VERSION=$(node -p "require('./packages/core/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-core-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-core-${VERSION}.tgz"
 
       - name: Publish @g2w/runtime
         run: |
           VERSION=$(node -p "require('./packages/runtime/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-runtime-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-runtime-${VERSION}.tgz"
 
       - name: Publish @g2w/renderer-pixi
         run: |
           VERSION=$(node -p "require('./packages/renderer-pixi/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-renderer-pixi-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-renderer-pixi-${VERSION}.tgz"
 
       - name: Publish @g2w/input-dom
         run: |
           VERSION=$(node -p "require('./packages/input-dom/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-input-dom-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-input-dom-${VERSION}.tgz"
 
       - name: Publish @g2w/input-gamepad
         run: |
           VERSION=$(node -p "require('./packages/input-gamepad/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-input-gamepad-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-input-gamepad-${VERSION}.tgz"
 
       - name: Publish @g2w/audio-web
         run: |
           VERSION=$(node -p "require('./packages/audio-web/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-audio-web-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-audio-web-${VERSION}.tgz"
 
       - name: Publish @g2w/devtools
         run: |
           VERSION=$(node -p "require('./packages/devtools/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/g2w-devtools-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/g2w-devtools-${VERSION}.tgz"
 
       - name: Publish create-g2w
         run: |
           VERSION=$(node -p "require('./packages/create-g2w/package.json').version")
           if [[ "$VERSION" == *-beta.* ]]; then TAG="--tag next"; else TAG=""; fi
-          npm publish --provenance --access public $TAG "packed/create-g2w-${VERSION}.tgz"
+          npm publish --provenance --access public $TAG "./packed/create-g2w-${VERSION}.tgz"

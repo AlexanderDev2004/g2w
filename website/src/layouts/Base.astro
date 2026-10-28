@@ -2,6 +2,7 @@
 import "../styles/global.css";
 import { LOCKUP_NAVBAR, MARK_ICON } from "../lib/marks";
 import PixelMark from "../components/PixelMark.astro";
+import SearchModal from "../components/SearchModal.astro";
 
 interface Props {
   title: string;
@@ -57,6 +58,10 @@ const site = "https://g2w.alexanderar.com";
         </div>
         <div class="navbar-right">
           <span class="version-badge">v0.1.0</span>
+          <button class="nav-search" type="button" aria-label="Search the site (press Ctrl+K or /)">
+            <span aria-hidden="true">⌕</span>
+            <span class="nav-search-key">Ctrl K</span>
+          </button>
           <a
             class="btn btn-sm btn-dark"
             href="https://github.com/AlexanderDev2004/g2w"
@@ -117,6 +122,7 @@ const site = "https://g2w.alexanderar.com";
         </div>
       </div>
     </footer>
+    <SearchModal />
     <script>
       const nav = document.querySelector(".navbar");
       const toggle = document.querySelector(".nav-toggle");

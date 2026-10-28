@@ -1,3 +1,10 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="docs/logo-lockup-dark.svg">
+    <img src="docs/logo-lockup.svg" alt="g2w — gamepad | G 2 W | browser window" width="468">
+  </picture>
+</p>
+
 # g2w - Game To Website
 
 **g2w — Game to Website** is a TypeScript-first, AI-agent-ready framework for building and shipping web games: HTML5 games, 2D first with 3D planned, for desktop and mobile web browsers.

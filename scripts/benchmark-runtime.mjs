@@ -1,11 +1,13 @@
-// R13 Phase 1: runtime benchmark harness (FPS, frame time, heap).
+// R13 runtime benchmark harness (FPS, frame time, heap).
 //
 // Boots the hello-world Vite dev server, opens the benchmark page
-// (bench.html?sprites=N) once per case in a fresh headless-Chrome page via
-// the Chrome DevTools Protocol over a raw WebSocket (Node built-in
-// WebSocket, no packages added), waits for the scene to be ready, then
-// samples the page's counters over a fixed wall-clock window and reports
-// FPS, average and p95 frame interval, and JS heap growth.
+// (bench.html?sprites=N) in a fresh headless-Chrome page via the Chrome
+// DevTools Protocol over a raw WebSocket (Node built-in WebSocket, no
+// packages added), waits for the scene to be ready, then samples the page's
+// counters over a fixed wall-clock window and reports FPS, average and p95
+// frame interval, and JS heap growth. Each case is sampled G2W_BENCH_RUNS
+// times with a fresh navigation per run; the summary reports the per-metric
+// median across runs (G2W_BENCH_RUNS=1 keeps the raw single-run values).
 //
 // Usage:
 //   node scripts/benchmark-runtime.mjs
@@ -13,12 +15,13 @@
 //   G2W_CHROME        absolute path to a Chrome/Chromium binary
 //                     (default: C:/Program Files/Google/Chrome/Application/chrome.exe)
 //   G2W_BENCH_PORT    dev-server port (default 5201); CDP port is +1
-//   G2W_BENCH_SECONDS sampling window per case (default 10)
+//   G2W_BENCH_SECONDS sampling window per run (default 10)
+//   G2W_BENCH_RUNS    runs per case (default 3)
 //   G2W_BENCH_CASES   comma-separated sprite counts (default 100,1000,5000)
 //
 // This is a hardware/browser-dependent benchmark harness: it is NOT part of
-// the default `pnpm test` suite and needs a locally installed Chrome. Single
-// run per case — re-run on quiet machines before comparing numbers.
+// the default `pnpm test` suite and needs a locally installed Chrome. Numbers
+// remain machine-specific — re-run on the target machine before comparing.
 import { spawn } from "node:child_process";
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -30,6 +33,7 @@ const CHROME = process.env.G2W_CHROME ?? "C:/Program Files/Google/Chrome/Applica
 const DEV_PORT = Number(process.env.G2W_BENCH_PORT ?? 5201);
 const CDP_PORT = DEV_PORT + 1;
 const WINDOW_SECONDS = Number(process.env.G2W_BENCH_SECONDS ?? 10);
+const RUNS = Math.max(1, Number.parseInt(process.env.G2W_BENCH_RUNS ?? "3", 10));
 const CASES = (process.env.G2W_BENCH_CASES ?? "100,1000,5000")
   .split(",")
   .map((value) => Number.parseInt(value.trim(), 10))
@@ -133,53 +137,77 @@ try {
 
     const rows = [];
     for (const sprites of CASES) {
-      process.stdout.write(`[case] sprites=${sprites} ... `);
-      await send("Page.navigate", {
-        url: `http://localhost:${DEV_PORT}/bench.html?sprites=${sprites}`,
-      });
-      await waitFor(
-        () =>
-          evaluate(
-            `(() => { const b = document.querySelector('#bench-error'); if (b && !b.hidden) throw new Error(b.textContent); return window.__g2wBench?.ready === true; })()`,
-          ),
-        { attempts: 200, intervalMs: 250, description: `the bench scene (${sprites} sprites)` },
-      );
-      // Small settle window so the first samples are steady-state.
-      await sleep(2000);
-      const start = await evaluate(
-        `({ frames: window.__g2wBench.frames, heap: performance.memory?.usedJSHeapSize ?? null, at: performance.now() })`,
-      );
-      await sleep(WINDOW_SECONDS * 1000);
-      const end = await evaluate(
-        `({ frames: window.__g2wBench.frames, heap: performance.memory?.usedJSHeapSize ?? null, ring: window.__g2wBench.ring, at: performance.now() })`,
-      );
-      const seconds = (end.at - start.at) / 1000;
-      const fps = (end.frames - start.frames) / seconds;
-      const ring = end.ring ?? [];
-      const sorted = [...ring].sort((a, b) => a - b);
-      const p95 =
-        sorted.length > 0
-          ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
-          : null;
-      const avgFrameMs = ring.length > 0 ? ring.reduce((a, b) => a + b, 0) / ring.length : null;
+      const runs = [];
+      for (let run = 0; run < RUNS; run++) {
+        process.stdout.write(`[case] sprites=${sprites} run ${run + 1}/${RUNS} ... `);
+        await send("Page.navigate", {
+          url: `http://localhost:${DEV_PORT}/bench.html?sprites=${sprites}`,
+        });
+        await waitFor(
+          () =>
+            evaluate(
+              `(() => { const b = document.querySelector('#bench-error'); if (b && !b.hidden) throw new Error(b.textContent); return window.__g2wBench?.ready === true; })()`,
+            ),
+          { attempts: 200, intervalMs: 250, description: `the bench scene (${sprites} sprites)` },
+        );
+        // Small settle window so the first samples are steady-state.
+        await sleep(2000);
+        const start = await evaluate(
+          `({ frames: window.__g2wBench.frames, heap: performance.memory?.usedJSHeapSize ?? null, at: performance.now() })`,
+        );
+        await sleep(WINDOW_SECONDS * 1000);
+        const end = await evaluate(
+          `({ frames: window.__g2wBench.frames, heap: performance.memory?.usedJSHeapSize ?? null, ring: window.__g2wBench.ring, at: performance.now() })`,
+        );
+        const seconds = (end.at - start.at) / 1000;
+        const fps = (end.frames - start.frames) / seconds;
+        const ring = end.ring ?? [];
+        const sorted = [...ring].sort((a, b) => a - b);
+        const p95 =
+          sorted.length > 0
+            ? sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))]
+            : null;
+        const avgFrameMs = ring.length > 0 ? ring.reduce((a, b) => a + b, 0) / ring.length : null;
+        const run_ = {
+          fps: Number(fps.toFixed(1)),
+          avgFrameMs: avgFrameMs === null ? null : Number(avgFrameMs.toFixed(2)),
+          p95FrameMs: p95 === null ? null : Number(p95.toFixed(2)),
+          heapMb:
+            start.heap === null || end.heap === null
+              ? null
+              : Number((end.heap / 1048576).toFixed(1)),
+          heapGrowthMb:
+            start.heap === null || end.heap === null
+              ? null
+              : Number(((end.heap - start.heap) / 1048576).toFixed(1)),
+        };
+        runs.push(run_);
+        console.log(JSON.stringify(run_));
+      }
+      const median = (values) => {
+        const sortedValues = [...values].filter((v) => v !== null).sort((a, b) => a - b);
+        if (sortedValues.length === 0) return null;
+        const mid = Math.floor(sortedValues.length / 2);
+        const value =
+          sortedValues.length % 2 === 0
+            ? (sortedValues[mid - 1] + sortedValues[mid]) / 2
+            : sortedValues[mid];
+        return Number(value.toFixed(2));
+      };
       const row = {
         sprites,
-        fps: Number(fps.toFixed(1)),
-        avgFrameMs: avgFrameMs === null ? null : Number(avgFrameMs.toFixed(2)),
-        p95FrameMs: p95 === null ? null : Number(p95.toFixed(2)),
-        heapMb:
-          start.heap === null || end.heap === null ? null : Number((end.heap / 1048576).toFixed(1)),
-        heapGrowthMb:
-          start.heap === null || end.heap === null
-            ? null
-            : Number(((end.heap - start.heap) / 1048576).toFixed(1)),
-        windowSeconds: Number(seconds.toFixed(1)),
+        fps: median(runs.map((r) => r.fps)),
+        avgFrameMs: median(runs.map((r) => r.avgFrameMs)),
+        p95FrameMs: median(runs.map((r) => r.p95FrameMs)),
+        heapMb: median(runs.map((r) => r.heapMb)),
+        heapGrowthMb: median(runs.map((r) => r.heapGrowthMb)),
+        runs: RUNS,
+        windowSeconds: WINDOW_SECONDS,
       };
       rows.push(row);
-      console.log(JSON.stringify(row));
     }
 
-    console.log("\n--- summary ---");
+    console.log(`\n--- summary (median of ${RUNS} runs) ---`);
     console.log("sprites |    fps | avgFrameMs | p95FrameMs | heapMb | heapGrowthMb");
     for (const row of rows) {
       console.log(
@@ -188,7 +216,7 @@ try {
     }
     console.log(`\nEnvironment: headless ${await evaluate("navigator.userAgent")}`);
     console.log(
-      `Sampling window: ${WINDOW_SECONDS}s per case; single run; re-run before comparing.`,
+      `Sampling window: ${WINDOW_SECONDS}s per run, ${RUNS} run(s) per case, median reported. Machine-specific: re-run on the target machine before comparing.`,
     );
     ws.close();
   } finally {

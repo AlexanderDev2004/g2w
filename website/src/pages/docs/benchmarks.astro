@@ -5,11 +5,11 @@ import DocsSidebar from "../../components/DocsSidebar.astro";
 // Numbers measured 2026-10-29 by scripts/benchmark-runtime.mjs and the
 // manual install/bundle audit recorded in ROADMAP.md (R13, phase 1).
 const runtime = [
-  { sprites: "100", fps: "60.0", avg: "16.78", p95: "17.9", heap: "16.8", growth: "−0.5" },
-  { sprites: "1,000", fps: "60.0", avg: "16.67", p95: "18.0", heap: "21.3", growth: "−0.9" },
-  { sprites: "5,000", fps: "60.0", avg: "16.70", p95: "17.8", heap: "34.7", growth: "+3.3" },
-  { sprites: "20,000", fps: "14.9", avg: "69.01", p95: "85.0", heap: "64.4", growth: "+13.9" },
-  { sprites: "50,000", fps: "6.6", avg: "158.83", p95: "178.5", heap: "156.9", growth: "−0.1" },
+  { sprites: "100", fps: "60.0", avg: "16.66", p95: "17.7", heap: "17.3", growth: "−1.0" },
+  { sprites: "1,000", fps: "60.0", avg: "16.64", p95: "17.8", heap: "21.5", growth: "+2.1" },
+  { sprites: "5,000", fps: "59.9", avg: "16.71", p95: "18.0", heap: "44.3", growth: "+10.7" },
+  { sprites: "20,000", fps: "23.8", avg: "41.69", p95: "57.8", heap: "75.4", growth: "−4.7" },
+  { sprites: "50,000", fps: "9.7", avg: "102.96", p95: "128.9", heap: "169.4", growth: "−1.1" },
 ];
 
 const bundle = [
@@ -56,20 +56,23 @@ const install = [
         The runtime harness (<code>scripts/benchmark-runtime.mjs</code>) boots
         the hello-world Vite dev server, opens a dedicated benchmark page in
         headless Chrome over the Chrome DevTools Protocol, and samples a fixed
-        10-second window per case. The page builds N orbiting sprites through
-        the public API only — the core <code>Game</code> loop,
-        <code>GameObjectCollection</code>, and <code>Sprite2D</code> +
-        <code>createSpriteView</code> — with an 8×8 texture generated locally,
-        so the measurement covers the sprite pipeline, not downloads. Frame
-        intervals come from a ring buffer inside the update hook;
-        heap numbers come from <code>performance.memory</code>.
+        10-second window per run — three runs per case, each with a fresh page
+        navigation, summarized as the per-metric median. The page builds N
+        orbiting sprites through the public API only — the core
+        <code>Game</code> loop, <code>GameObjectCollection</code>, and
+        <code>Sprite2D</code> + <code>createSpriteView</code> — with an 8×8
+        texture generated locally, so the measurement covers the sprite
+        pipeline, not downloads. Frame intervals come from a ring buffer
+        inside the update hook; heap numbers come from
+        <code>performance.memory</code>. Set <code>G2W_BENCH_RUNS</code> to
+        change the run count.
       </p>
       <div class="callout" style="box-shadow: none">
         <span class="tag">Environment</span>
         <span>
-          Windows 11 x64, HeadlessChrome 156, one run per case, sampled
-          2026-10-29. Machine- and browser-dependent: treat the values as
-          order-of-magnitude evidence, re-run on your own hardware with
+          Windows 11 x64, HeadlessChrome 156, median of 3 runs per case,
+          sampled 2026-10-29. Machine- and browser-dependent: treat the values
+          as order-of-magnitude evidence, re-run on your own hardware with
           <code>node scripts/benchmark-runtime.mjs</code>. The harness is
           browser-dependent and deliberately <b>not</b> part of
           <code>pnpm test</code> or CI.
@@ -101,8 +104,8 @@ const install = [
         requestAnimationFrame cap (60 fps, ~16.7 ms average). The saturation
         point sits between 5,000 and 20,000 sprites, where the per-sprite
         <code>view.sync()</code> projection — no batching, no texture atlas —
-        becomes the dominant cost. Heap growth stays near zero except for a
-        one-off ~14 MB climb during the 20,000-sprite case.
+        becomes the dominant cost. Heap stays in a 17–44 MB band up to 5,000
+        sprites and scales with the workload beyond it (75–170 MB at 20k/50k).
       </p>
 
       <h2 id="bundle">Bundle size</h2>
@@ -160,12 +163,13 @@ const install = [
       <div class="callout" style="box-shadow: none">
         <span class="tag">Caveats</span>
         <span>
-          <b>One machine, one run per case, headless browser.</b> The runtime
-          table describes g2w only — no competitor runs the same sprite
-          workload yet, so no cross-framework FPS claim is made here; the
-          bundle and install tables are static measurements, not behavior.
-          Multi-run aggregation (median of N runs) and a shared sample game
-          per framework are the next R13 acceptance criteria.
+          <b>One machine, headless browser.</b> The median-of-3 aggregation
+          removes single-run noise (the single-run preview was markedly more
+          pessimistic at high sprite counts), but the runtime table still
+          describes g2w only — no competitor runs the same sprite workload
+          yet, so no cross-framework FPS claim is made here; the bundle and
+          install tables are static measurements, not behavior. A shared
+          sample game per framework is the remaining R13 acceptance criterion.
         </span>
       </div>
 

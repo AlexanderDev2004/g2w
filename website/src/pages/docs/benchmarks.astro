@@ -29,7 +29,8 @@ const install = [
   { name: "Excalibur", time: "1.9 s", size: "8.5 MB" },
   { name: "Three.js", time: "6.7 s", size: "19.5 MB" },
   { name: "PixiJS", time: "8.3 s", size: "80.1 MB" },
-  { name: "g2w set (core + runtime + renderer-pixi + input-dom)", time: "13.4 s", size: "131.4 MB" },
+  { name: "g2w minimal (core + renderer-pixi + input-dom)", time: "~17 s", size: "80.3 MB" },
+  { name: "g2w full set (core + runtime + renderer-pixi + input-dom)", time: "13.4 s", size: "131.4 MB" },
   { name: "Phaser", time: "13.5 s", size: "107.4 MB" },
   { name: "MelonJS", time: "14.2 s", size: "5.1 MB" },
   { name: "Babylon.js", time: "22.9 s", size: "69.4 MB" },
@@ -129,9 +130,13 @@ const install = [
       <h2 id="install">Install footprint</h2>
       <p>
         Developer-side cost: one warm-cache <code>npm install</code> per
-        package and the resulting <code>node_modules</code> size. The g2w set
-        includes its renderer (pixi.js) and runtime (effect) dependencies —
-        the disk weight is the dependencies, not the framework code
+        package and the resulting <code>node_modules</code> size. The g2w
+        packages themselves are ~0.3 MB — the disk weight is the dependencies
+        you pull in. The <b>minimal set</b> (core + renderer + DOM input,
+        booting the core <code>Game</code>) installs pixi.js only, which makes
+        it about the same size as PixiJS itself; adding
+        <code>@g2w/runtime</code> for the Effect-native <code>G2WGame</code>
+        lifecycle brings effect's ~51 MB on disk
         (<a href="/docs/packages#footprint">see the footprint breakdown</a>).
       </p>
       <div class="pkg-table" style="box-shadow: none">

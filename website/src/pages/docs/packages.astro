@@ -122,6 +122,11 @@ const table = [
               <td>~1 KB — the core contract is dependency-free</td>
             </tr>
             <tr>
+              <td class="name">g2w minimal (core + renderer-pixi + input-dom)</td>
+              <td>~80 MB</td>
+              <td>Same as PixiJS — the renderer is the only heavy dependency</td>
+            </tr>
+            <tr>
               <td class="name">g2w set (core + runtime + renderer-pixi + input-dom)</td>
               <td>~131 MB</td>
               <td>~209 KB (the hello-world demo build)</td>
@@ -142,14 +147,18 @@ const table = [
       <div class="callout" style="box-shadow: none">
         <span class="tag">Trade-off</span>
         <span>
-          <b>Effect costs ~51 MB on disk but ~tens of KB in the browser.</b> It is
-          paid once at install time by developers, not by players. If a minimal
-          install matters more than the Effect-native <code>G2WGame</code>
-          lifecycle, skip <code>@g2w/runtime</code> and boot the core
-          <code>Game</code> directly — that path carries zero Effect weight, and
+          <b>Effect costs ~51 MB on disk but ~tens of KB in the browser.</b> It
+          is paid once at install time by developers, not by players — and it
+          is optional: installing the minimal set
+          (<code>@g2w/core</code>, <code>@g2w/renderer-pixi</code>,
+          <code>@g2w/input-dom</code>) skips effect entirely and lands at
+          ~80 MB, roughly the size of PixiJS alone. That path boots the core
+          <code>Game</code> directly and carries zero Effect weight;
           <code>@g2w/core</code> is architecturally guaranteed to stay
-          Effect-free. This balance was evaluated in October 2026 and the
-          measured numbers are published on the
+          Effect-free. The remaining ~73 MB is pixi.js itself — the renderer's
+          npm package — which no framework choice on top of PixiJS can remove.
+          This balance was evaluated in October 2026 and the measured numbers
+          are published on the
           <a href="/docs/benchmarks">benchmarks page</a>.
         </span>
       </div>

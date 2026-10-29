@@ -97,6 +97,19 @@ All verified by the test suite and CI (see [docs/architecture.md](docs/architect
   2. [x] Z-order defined and tested (higher `zIndex` in front; equal values stable).
   3. [x] Demo updated (center-anchored logo and sparks).
 
+### R13 — Runtime benchmark harness
+
+**Status:** In Progress · **Priority:** P2
+- **Objective:** a reproducible benchmark harness and a published measurements page, so every performance claim on the website points at a runnable script instead of a one-off number.
+- **Resolution (phase 1, implemented):** `scripts/benchmark-runtime.mjs` boots the hello-world Vite dev server, drives a dedicated benchmark page (`examples/hello-world/bench.html`) in headless Chrome over the Chrome DevTools Protocol (raw WebSocket, no new dependencies, same harness pattern as the R6-2/R6-3 smoke scripts), and samples the frame loop and JS heap over a fixed wall-clock window per case. The benchmark page builds N orbiting sprites through the public API only — core `Game`, `GameObjectCollection`, `Sprite2D` + `createSpriteView` — with an 8×8 locally generated texture (no network, no asset loading); a ring buffer of frame intervals feeds fps / avg / p95 frame time, and `performance.memory` feeds heap size and growth. Browser-dependent and deliberately **not part of `pnpm test`**; not run in CI.
+- **First recorded run (2026-10-29, single run per case, Windows + HeadlessChrome 156):** 60 fps (rAF cap) at 100 / 1,000 / 5,000 sprites (avg frame ~16.7 ms, p95 ≤ 18 ms); ~15 fps at 20,000 sprites (avg 69 ms, p95 85 ms); ~6.6 fps at 50,000 sprites (avg 159 ms). Heap grew ~14 MB during the 20,000-sprite case and stayed flat otherwise. The known cost is the per-sprite `view.sync()` path — no batching, no atlas — consistent with sprite batching staying a candidate item.
+- **Caveats:** single machine, single run per case, headless environment; the runtime numbers describe g2w only. Cross-framework runtime comparison (same game built on competitors' APIs) is a future phase; the website currently compares frameworks on install time and bundle size instead.
+- **Acceptance criteria:**
+  1. [x] The harness runs from a single documented command and reports fps, frame-time percentiles, and heap per sprite count.
+  2. [x] First measurements recorded and published on `/docs/benchmarks` with methodology, environment, and caveats.
+  3. [ ] Repeatable multi-run aggregation (median of N runs) before any comparative performance claim.
+  4. [ ] Optional: cross-framework runtime comparison with sample games built on competitors' APIs.
+
 ## Medium-term
 
 ### R3 — Renderer sizing, logical resolution, and viewport
@@ -242,7 +255,6 @@ The following areas have **no committed milestone or priority yet**. They are li
 - Manifest-based bulk asset loading.
 - Action mapping / input rebinding.
 - Scene stacks and transition effects.
-- Performance benchmarks (a reproducible benchmark harness should exist before any performance claim is made).
 
 ## Risks and open questions
 

@@ -1,0 +1,37 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>g2w runtime benchmark</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14141e;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+      #bench-error {
+        color: #ff6b6b;
+        white-space: pre-wrap;
+        max-width: 640px;
+      }
+      #bench-canvas {
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        max-width: 100% !important;
+        /* biome-ignore lint/complexity/noImportantStyles: required to override PixiJS autoDensity inline styles */
+        height: auto !important;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <canvas id="bench-canvas" width="640" height="360"></canvas>
+      <pre id="bench-error" hidden></pre>
+    </div>
+    <script type="module" src="/src/bench-main.ts"></script>
+  </body>
+</html>

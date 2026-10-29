@@ -105,6 +105,54 @@ const table = [
         </span>
       </div>
 
+      <h2 id="footprint">Dependency footprint</h2>
+      <p>
+        Verified sizes from the npm registry and a fresh <code>npm install</code>
+        (2026-10-29), so you can pick the composition that fits your budget:
+      </p>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Composition</th><th>node_modules</th><th>Browser bundle (gzip)</th></tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td class="name">@g2w/core only</td>
+              <td>~0.2 MB</td>
+              <td>~1 KB — the core contract is dependency-free</td>
+            </tr>
+            <tr>
+              <td class="name">g2w set (core + runtime + renderer-pixi + input-dom)</td>
+              <td>~131 MB</td>
+              <td>~209 KB (the hello-world demo build)</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <p>
+        Where the disk weight comes from, measured on the same install: the
+        <code>@g2w/*</code> packages themselves are <b>~0.3 MB</b>; the rest is
+        their declared dependencies — <b>pixi.js ~73 MB</b> (the renderer) and
+        <b>effect ~51 MB</b> (@g2w/runtime). The browser bundle tells the
+        opposite story: tree-shaking keeps Effect's share small (the demo's
+        total shipped JavaScript is ~209 KB gzipped, and Effect added only
+        ~82 KB raw when it landed in E4), while the renderer dominates what a
+        player actually downloads.
+      </p>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Trade-off</span>
+        <span>
+          <b>Effect costs ~51 MB on disk but ~tens of KB in the browser.</b> It is
+          paid once at install time by developers, not by players. If a minimal
+          install matters more than the Effect-native <code>G2WGame</code>
+          lifecycle, skip <code>@g2w/runtime</code> and boot the core
+          <code>Game</code> directly — that path carries zero Effect weight, and
+          <code>@g2w/core</code> is architecturally guaranteed to stay
+          Effect-free. This balance was evaluated in October 2026; it is
+          re-checked when the benchmark harness lands.
+        </span>
+      </div>
+
       <h2 id="next">Next steps</h2>
       <p>
         Read the <a href="/docs/introduction#lifecycle">game lifecycle</a> states,
@@ -124,6 +172,7 @@ const table = [
       <a href="#adapters">Adapters</a>
       <a href="#cli">create-g2w</a>
       <a href="#status">Publishing status</a>
+      <a href="#footprint">Dependency footprint</a>
       <a href="#next">Next steps</a>
     </aside>
   </div>

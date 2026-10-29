@@ -2,7 +2,7 @@
 import Base from "../../layouts/Base.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 
-const LAST_REVIEWED = "2026-10-28";
+const LAST_REVIEWED = "2026-10-29";
 
 // Every status below is copied from ROADMAP.md on the date above and linked
 // to its evidence in the full roadmap document. This page is a summary; the
@@ -27,6 +27,7 @@ const shipped = [
 
 const active = [
   { id: "r6-ops", name: "R6 – Dependency & supply-chain maintenance", what: "Ongoing: weekly Dependabot updates, pnpm audit gates in release review, install-lifecycle-script review for every new dependency." },
+  { id: "r13", name: "R13 – Runtime benchmark harness", what: "A CDP harness (scripts/benchmark-runtime.mjs) sampling fps, frame-time percentiles, and JS heap per sprite count in headless Chrome — public API only, not in CI. First measurements published on the benchmarks page." },
 ];
 
 const exploratory = [
@@ -43,7 +44,6 @@ const candidates = [
   "Manifest-based bulk asset loading",
   "Action mapping / input rebinding",
   "Scene stacks and transition effects",
-  "Performance benchmarks",
 ];
 
 const risks = [

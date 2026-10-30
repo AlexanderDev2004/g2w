@@ -1,0 +1,76 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bench: Phaser</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14141e;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+      #bench-error {
+        color: #ff6b6b;
+        white-space: pre-wrap;
+        max-width: 640px;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <pre id="bench-error" hidden></pre>
+    <script type="module">
+      // Cross-framework runtime benchmark: the same N-sprite orbit workload as
+      // the g2w page, built on Phaser 4's sprite API and game loop.
+      import { createCounters, makeTileCanvas, markFrame, orbit, showError, spriteCountFromUrl, VIEW_HEIGHT, VIEW_WIDTH } from "./bench-common.js";
+
+      try {
+        // Dynamic import inside try: a failed CDN fetch surfaces in the error
+        // box instead of silently never running the module.
+        const Phaser = await import("https://esm.sh/phaser@4.2.1").then((m) => m.default);
+        const spritesCount = spriteCountFromUrl();
+        const counters = createCounters(spritesCount);
+
+        new Phaser.Game({
+          type: Phaser.AUTO,
+          width: VIEW_WIDTH,
+          height: VIEW_HEIGHT,
+          backgroundColor: "#1099bb",
+          parent: "app",
+          scene: {
+            create() {
+              // Same 8×8 texture source as every other bench page.
+              this.textures.addCanvas("dot", makeTileCanvas());
+              this.sprites = [];
+              for (let i = 0; i < spritesCount; i++) {
+                const phase = (i / spritesCount) * Math.PI * 2;
+                const sprite = this.add.sprite(VIEW_WIDTH / 2, VIEW_HEIGHT / 2, "dot");
+                sprite.setOrigin(0.5);
+                sprite.setScale(0.75);
+                sprite.phase = phase;
+                this.sprites.push(sprite);
+              }
+            },
+            update() {
+              // Phaser's scene update runs once per frame, before the render —
+              // the same point in the loop the g2w page counts.
+              const age = performance.now() / 1000;
+              for (const sprite of this.sprites) {
+                const state = orbit(age, sprite.phase);
+                sprite.setPosition(state.x, state.y);
+                sprite.setRotation(state.rotation);
+              }
+              markFrame(counters);
+            },
+          },
+        });
+      } catch (error) {
+        showError(error);
+      }
+    </script>
+  </body>
+</html>

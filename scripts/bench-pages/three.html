@@ -1,0 +1,82 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>bench: Three.js</title>
+    <style>
+      body {
+        margin: 0;
+        min-height: 100vh;
+        display: grid;
+        place-items: center;
+        background: #14141e;
+        color: #eee;
+        font-family: system-ui, sans-serif;
+      }
+      #bench-error {
+        color: #ff6b6b;
+        white-space: pre-wrap;
+        max-width: 640px;
+      }
+    </style>
+  </head>
+  <body>
+    <div>
+      <canvas id="bench-canvas" width="640" height="360"></canvas>
+      <pre id="bench-error" hidden></pre>
+    </div>
+    <script type="module">
+      // Cross-framework runtime benchmark: the same N-sprite orbit workload as
+      // the g2w page, built on Three.js Sprites with an orthographic 640×360
+      // view (y-down, matching every other page's coordinate space). Each
+      // sprite gets its own material because Three.js puts per-sprite rotation
+      // on the material — the idiomatic way to hold independently animatable
+      // sprites.
+      import { createCounters, makeTileCanvas, markFrame, orbit, showError, spriteCountFromUrl, VIEW_HEIGHT, VIEW_WIDTH } from "./bench-common.js";
+
+      try {
+        // Dynamic import inside try: a failed CDN fetch surfaces in the error
+        // box instead of silently never running the module.
+        const THREE = await import("https://esm.sh/three@0.186.1").then((m) => m.default ?? m);
+        const spritesCount = spriteCountFromUrl();
+        const counters = createCounters(spritesCount);
+
+        const renderer = new THREE.WebGLRenderer({ canvas: document.querySelector("#bench-canvas"), antialias: false });
+        renderer.setSize(VIEW_WIDTH, VIEW_HEIGHT, false);
+        renderer.setClearColor(0x1099bb);
+        // top < bottom flips the y axis, so page coordinates match PixiJS/g2w.
+        const camera = new THREE.OrthographicCamera(0, VIEW_WIDTH, 0, VIEW_HEIGHT, -1000, 1000);
+        const scene = new THREE.Scene();
+
+        const texture = new THREE.CanvasTexture(makeTileCanvas());
+        texture.magFilter = THREE.NearestFilter;
+        texture.minFilter = THREE.NearestFilter;
+        const sprites = [];
+        for (let i = 0; i < spritesCount; i++) {
+          const phase = (i / spritesCount) * Math.PI * 2;
+          const material = new THREE.SpriteMaterial({ map: texture });
+          const sprite = new THREE.Sprite(material);
+          sprite.center.set(0.5, 0.5);
+          sprite.scale.set(6, 6, 1); // 8×8 tile × 0.75, like every other page
+          sprite.position.set(VIEW_WIDTH / 2, VIEW_HEIGHT / 2, 0);
+          sprite.phase = phase;
+          sprites.push(sprite);
+          scene.add(sprite);
+        }
+
+        renderer.setAnimationLoop(() => {
+          const age = performance.now() / 1000;
+          for (const sprite of sprites) {
+            const state = orbit(age, sprite.phase);
+            sprite.position.set(state.x, state.y, 0);
+            sprite.material.rotation = state.rotation;
+          }
+          renderer.render(scene, camera);
+          markFrame(counters);
+        });
+      } catch (error) {
+        showError(error);
+      }
+    </script>
+  </body>
+</html>

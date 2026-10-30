@@ -12,6 +12,14 @@ const runtime = [
   { sprites: "50,000", fps: "9.7", avg: "102.96", p95: "128.9", heap: "169.4", growth: "−1.1" },
 ];
 
+const crossFramework = [
+  { sprites: "100", g2w: "60.0", pixi: "60.0", phaser: "60.0", three: "60.0" },
+  { sprites: "1,000", g2w: "60.0", pixi: "60.0", phaser: "60.0", three: "60.0" },
+  { sprites: "5,000", g2w: "60.0", pixi: "60.0", phaser: "60.0", three: "21.6" },
+  { sprites: "20,000", g2w: "31.6", pixi: "43.0", phaser: "23.0", three: "4.7" },
+  { sprites: "50,000", g2w: "13.4", pixi: "18.5", phaser: "11.4", three: "2.0" },
+];
+
 const bundle = [
   { name: "g2w — hello-world demo build (own code + pixi.js + effect)", size: "683 KB / 209 KB gzip" },
   { name: "g2w — own packages only", size: "113 KB / ~37 KB gzip" },
@@ -108,6 +116,55 @@ const install = [
         sprites and scales with the workload beyond it (75–170 MB at 20k/50k).
       </p>
 
+      <h2 id="cross-framework">Cross-framework runtime</h2>
+      <p>
+        The same sprite workload — one shared implementation of the orbit math
+        and frame counters (<code>scripts/bench-pages/bench-common.js</code>) —
+        built on four stacks in one session: g2w, raw PixiJS 8.22.0 (the
+        renderer g2w adapts), Phaser 4.2.1, and Three.js 0.186.1 Sprites, all
+        measured in the same headless Chrome with the median-of-3 methodology.
+      </p>
+      <div class="pkg-table" style="box-shadow: none">
+        <table>
+          <thead>
+            <tr><th>Sprites</th><th>g2w</th><th>PixiJS (raw)</th><th>Phaser</th><th>Three.js</th></tr>
+          </thead>
+          <tbody>
+            {crossFramework.map((row) => (
+              <tr>
+                <td class="name">{row.sprites}</td>
+                <td>{row.g2w}</td>
+                <td>{row.pixi}</td>
+                <td>{row.phaser}</td>
+                <td>{row.three}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+      <p>
+        All four ride the 60 fps cap through 5,000 sprites. Beyond it, raw
+        PixiJS leads (it is the renderer g2w wraps), the g2w adapter costs
+        roughly 25–30% at high counts, g2w stays ahead of Phaser, and Three.js
+        Sprites trail badly — per-sprite draw calls with no batching, exactly
+        what that API is not built for. Read honestly: at 20,000 independently
+        animated sprites every stack is already below common refresh rates,
+        and typical 2D games run thousands, not tens of thousands, of live
+        sprites.
+      </p>
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Scope</span>
+        <span>
+          The framework pages load <b>pinned CDN builds</b> (jsDelivr/esm.sh),
+          and the comparison covers one sprite workload — not full games,
+          physics, or UI. Same-session rows are internally consistent; absolute
+          values shift between sessions with machine load (the standalone g2w
+          table above recorded a calmer and a busier session the same day).
+          Re-run with <code>node scripts/benchmark-frameworks.mjs</code> on
+          target hardware before drawing conclusions.
+        </span>
+      </div>
+
       <h2 id="bundle">Bundle size</h2>
       <p>
         Raw size of the JavaScript each npm tarball would ship to the browser
@@ -163,13 +220,13 @@ const install = [
       <div class="callout" style="box-shadow: none">
         <span class="tag">Caveats</span>
         <span>
-          <b>One machine, headless browser.</b> The median-of-3 aggregation
-          removes single-run noise (the single-run preview was markedly more
-          pessimistic at high sprite counts), but the runtime table still
-          describes g2w only — no competitor runs the same sprite workload
-          yet, so no cross-framework FPS claim is made here; the bundle and
-          install tables are static measurements, not behavior. A shared
-          sample game per framework is the remaining R13 acceptance criterion.
+          <b>One machine, headless browser, one sprite workload.</b> The
+          median-of-3 aggregation removes single-run noise, and the
+          cross-framework rows come from one session, but none of these
+          numbers cover full games — physics, UI, audio, asset streaming —
+          and they say nothing about developer experience, features, or
+          ecosystem. Performance is one axis of many; see the
+          <a href="/docs/comparison">framework comparison</a> for the rest.
         </span>
       </div>
 
@@ -188,6 +245,7 @@ const install = [
       <a class="on" href="#">Benchmarks</a>
       <a href="#method">Methodology</a>
       <a href="#runtime">Runtime scaling</a>
+      <a href="#cross-framework">Cross-framework runtime</a>
       <a href="#bundle">Bundle size</a>
       <a href="#install">Install footprint</a>
       <a href="#caveats">What these numbers do not say</a>

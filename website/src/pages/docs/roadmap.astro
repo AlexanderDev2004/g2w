@@ -27,7 +27,7 @@ const shipped = [
 
 const active = [
   { id: "r6-ops", name: "R6 – Dependency & supply-chain maintenance", what: "Ongoing: weekly Dependabot updates, pnpm audit gates in release review, install-lifecycle-script review for every new dependency." },
-  { id: "r13", name: "R13 – Runtime benchmark harness", what: "A CDP harness (scripts/benchmark-runtime.mjs) sampling fps, frame-time percentiles, and JS heap per sprite count in headless Chrome — median of N runs per case (G2W_BENCH_RUNS, default 3). Public API only, not in CI; measurements on the benchmarks page." },
+  { id: "r13", name: "R13 – Runtime benchmark harness", what: "A CDP harness sampling fps, frame-time percentiles, and JS heap (median of N runs), plus a cross-framework comparison on an identical sprite workload: g2w vs raw PixiJS, Phaser, and Three.js. Public API only, not in CI; measurements on the benchmarks page." },
 ];
 
 const exploratory = [

@@ -217,6 +217,17 @@ a {
   font-size: 12px;
   box-shadow: none;
 }
+.nav-star {
+  gap: 6px;
+}
+.nav-star svg {
+  fill: currentColor;
+  flex-shrink: 0;
+}
+.nav-star-count {
+  min-width: 2ch;
+  text-align: left;
+}
 
 /* ---------- badges ---------- */
 .badge {
@@ -770,6 +781,9 @@ a {
     display: inline-flex;
   }
   .nav-search-key {
+    display: none;
+  }
+  .nav-star {
     display: none;
   }
   .navbar-links {

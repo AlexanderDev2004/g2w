@@ -3,9 +3,18 @@ import Base from "../../layouts/Base.astro";
 import DocsSidebar from "../../components/DocsSidebar.astro";
 
 const scaffoldCode = [
-  `<span class="cm"># scaffold a new game project (after the npm release lands)</span>`,
+  `<span class="cm"># pnpm (recommended)</span>`,
   `<span class="fn">pnpm</span> create g2w my-game`,
   ``,
+  `<span class="cm"># npm or bare npx — always the latest published CLI</span>`,
+  `<span class="fn">npm</span> create g2w@latest my-game`,
+  `<span class="fn">npx</span> create-g2w@latest my-game`,
+  ``,
+  `<span class="cm"># pick which package manager the printed next steps use</span>`,
+  `<span class="fn">npx</span> create-g2w@latest my-game --package-manager npm`,
+].join("\n");
+
+const scaffoldRunCode = [
   `<span class="kw">cd</span> my-game`,
   `<span class="fn">pnpm</span> install`,
   `<span class="fn">pnpm</span> dev`,
@@ -59,6 +68,17 @@ const treeCode = [
       <div class="codeblock" style="box-shadow: none">
         <div class="cb-head"><span>shell</span></div>
         <pre><code set:html={scaffoldCode} /></pre>
+      </div>
+      <p>
+        Every command resolves to the same <code>create-g2w</code> CLI at the latest
+        published version. The CLI never prompts; it prints install/dev commands for
+        the package manager you name with <code>--package-manager npm|pnpm|yarn|bun</code>
+        (default pnpm). The generated project itself is package-manager-agnostic: no
+        lockfile ships and its scripts call <code>vite</code> directly.
+      </p>
+      <div class="codeblock" style="box-shadow: none">
+        <div class="cb-head"><span>shell</span></div>
+        <pre><code set:html={scaffoldRunCode} /></pre>
       </div>
       <p>
         The generated project ships with a playable scene — a square you steer with

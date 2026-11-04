@@ -100,6 +100,49 @@ describe("create-g2w argument handling", () => {
   });
 });
 
+describe("create-g2w package manager flag", () => {
+  it.each([
+    ["npm", "npm install", "npm run dev"],
+    ["pnpm", "pnpm install", "pnpm dev"],
+    ["yarn", "yarn install", "yarn dev"],
+    ["bun", "bun install", "bun run dev"],
+  ])(
+    "prints %s commands in the next steps with --package-manager %s",
+    async (packageManager, install, dev) => {
+      const dir = await scratch();
+      const target = path.join(dir, "my-game");
+      const io_ = io();
+      await run([target, "--package-manager", packageManager], io_, fakeGit().runner);
+      const log = io_.logs.join("\n");
+      expect(log).toContain(install);
+      expect(log).toContain(dev);
+    },
+  );
+
+  it("defaults to the pnpm commands", async () => {
+    const dir = await scratch();
+    const target = path.join(dir, "my-game");
+    const io_ = io();
+    await run([target], io_, fakeGit().runner);
+    const log = io_.logs.join("\n");
+    expect(log).toContain("pnpm install");
+    expect(log).toContain("pnpm dev");
+    expect(log).not.toContain("npm run dev");
+  });
+
+  it("rejects an unknown package manager by name", async () => {
+    await expect(run(["somewhere", "--package-manager", "poetry"], io())).rejects.toThrow(
+      /Unknown package manager: poetry/,
+    );
+  });
+
+  it("requires a value for --package-manager", async () => {
+    await expect(run(["somewhere", "--package-manager"], io())).rejects.toThrow(
+      /--package-manager requires a value/,
+    );
+  });
+});
+
 describe("create-g2w generation", () => {
   it("copies the whole template and substitutes the project name", async () => {
     const dir = await scratch();

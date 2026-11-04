@@ -26,6 +26,10 @@ Arguments:
 Options:
   --name <name>       Package name for the generated project (default: a
                       package-safe form of the target directory's name).
+  --package-manager <pm>
+                      Which package manager the printed next steps use:
+                      npm, pnpm, yarn, or bun (default: pnpm). The generated
+                      project itself is package-manager-agnostic.
   --force             Write into an existing non-empty directory, overwriting
                       only the files this tool generates. Never deletes any
                       pre-existing file.
@@ -70,7 +74,28 @@ export interface RunIO {
 interface Options {
   destination: string;
   projectName: string;
+  packageManager: PackageManager;
   force: boolean;
+}
+
+/** Package managers whose commands the CLI can print in its next steps. */
+export type PackageManager = "npm" | "pnpm" | "yarn" | "bun";
+
+const PACKAGE_MANAGERS: readonly PackageManager[] = ["npm", "pnpm", "yarn", "bun"];
+
+/**
+ * Install and dev commands per package manager. npm and bun need an explicit
+ * `run` for non-lifecycle scripts; pnpm and yarn do not.
+ */
+const PACKAGE_MANAGER_COMMANDS: Record<PackageManager, { install: string; dev: string }> = {
+  npm: { install: "npm install", dev: "npm run dev" },
+  pnpm: { install: "pnpm install", dev: "pnpm dev" },
+  yarn: { install: "yarn install", dev: "yarn dev" },
+  bun: { install: "bun install", dev: "bun run dev" },
+};
+
+function isPackageManager(value: string): value is PackageManager {
+  return (PACKAGE_MANAGERS as readonly string[]).includes(value);
 }
 
 /**
@@ -85,6 +110,7 @@ export function sanitizeProjectName(raw: string): string | null {
 function parseOptions(argv: string[]): Options {
   let destination: string | undefined;
   let projectName: string | undefined;
+  let packageManager: PackageManager = "pnpm";
   let force = false;
 
   for (let i = 0; i < argv.length; i++) {
@@ -108,6 +134,20 @@ function parseOptions(argv: string[]): Options {
       i++;
       continue;
     }
+    if (argument === "--package-manager") {
+      const value = argv[i + 1];
+      if (value === undefined || value.startsWith("--")) {
+        throw new ScaffoldError("--package-manager requires a value, e.g. --package-manager npm.");
+      }
+      if (!isPackageManager(value)) {
+        throw new ScaffoldError(
+          `Unknown package manager: ${value}. Choose one of npm, pnpm, yarn, bun.`,
+        );
+      }
+      packageManager = value;
+      i++;
+      continue;
+    }
     if (argument.startsWith("--")) {
       throw new ScaffoldError(`Unknown option: ${argument}. Run create-g2w --help for usage.`);
     }
@@ -121,7 +161,7 @@ function parseOptions(argv: string[]): Options {
 
   if (destination === undefined) {
     throw new ScaffoldError(
-      "Missing target directory. Usage: create-g2w <target-directory> [--name <name>] [--force]",
+      "Missing target directory. Usage: create-g2w <target-directory> [--name <name>] [--package-manager npm|pnpm|yarn|bun] [--force]",
     );
   }
 
@@ -134,7 +174,7 @@ function parseOptions(argv: string[]): Options {
     );
   }
 
-  return { destination: resolved, projectName: name, force };
+  return { destination: resolved, projectName: name, packageManager, force };
 }
 
 class HelpRequested extends Error {}
@@ -212,7 +252,7 @@ export async function run(
     }
     throw error;
   }
-  const { destination, projectName, force } = options;
+  const { destination, projectName, packageManager, force } = options;
 
   let destinationStat = null;
   try {
@@ -255,8 +295,9 @@ export async function run(
   io.log("");
   io.log("Next steps:");
   io.log(`  cd ${path.relative(process.cwd(), destination) || "."}`);
-  io.log("  pnpm install");
-  io.log("  pnpm dev");
+  const commands = PACKAGE_MANAGER_COMMANDS[packageManager];
+  io.log(`  ${commands.install}`);
+  io.log(`  ${commands.dev}`);
   io.log("");
   io.log("Then open the printed localhost URL. Controls: WASD / arrow keys.");
   return 0;

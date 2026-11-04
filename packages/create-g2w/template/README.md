@@ -44,12 +44,10 @@ test/                   Unit tests (Vitest, deterministic, no browser)
 - `@g2w/input-dom` — browser keyboard/pointer adapter feeding `InputState`.
 - `pixi.js` — the rendering library (peer of `@g2w/renderer-pixi`).
 
-Note: the `@g2w/*` packages are consumed at version `0.1.0`. If npm reports
-that these packages cannot be resolved, they are not published yet — see the
-[g2w roadmap](https://github.com/AlexanderDev2004/g2w/blob/main/ROADMAP.md)
-(R10) for the publishing plan. Until then, g2w templates are validated
-against locally packed package tarballs
-(`node scripts/smoke-create-g2w.mjs` in the g2w repository).
+Note: the `@g2w/*` packages are consumed at version `0.1.0`, their published
+npm release (2026-10-28). If npm still reports that a package cannot be
+resolved, check your registry: `npm view @g2w/core version` should print
+`0.1.0` or newer.
 
 ## License
 

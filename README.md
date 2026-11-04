@@ -125,12 +125,14 @@ pnpm install
 
 ```sh
 pnpm create g2w my-game
+# or: npm create g2w@latest my-game
+# or: npx create-g2w@latest my-game
 cd my-game
 pnpm install
 pnpm dev
 ```
 
-The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts a target directory, refuses to overwrite existing files without `--force`, and prints next steps. After generating, it initializes a local Git repository in the project (plain `git init`; no remote, no initial commit, no push). Initialization is skipped with a warning when Git is not installed or the destination already contains Git metadata, and it never fails the scaffold — the generated files always remain. Requires Node >= 22 and, for the Git step, a Git executable on `PATH`. Validated end to end (install, typecheck, unit tests, production build, browser smoke) against locally packed `@g2w/*` tarballs with `node scripts/smoke-create-g2w.mjs` — the `@g2w/*` packages are **not published to npm yet** (ROADMAP R10), so until then a generated project resolves them from packed tarballs, and `pnpm create g2w` works only after publishing. From a clone, the CLI can be run directly: `node packages/create-g2w/dist/cli.js my-game` (after `pnpm build`).
+The generator is a zero-dependency Node CLI (`packages/create-g2w`): it accepts a target directory, refuses to overwrite existing files without `--force`, and prints next steps (`--package-manager npm|pnpm|yarn|bun` chooses which commands it prints; the generated project is package-manager-agnostic). After generating, it initializes a local Git repository in the project (plain `git init`; no remote, no initial commit, no push). Initialization is skipped with a warning when Git is not installed or the destination already contains Git metadata, and it never fails the scaffold — the generated files always remain. Requires Node >= 22 and, for the Git step, a Git executable on `PATH`. The `@g2w/*` packages it pins are **published to npm at 0.1.0** (R10 Phase 3, 2026-10-28), so the scaffolded project installs straight from the registry; the end-to-end validation path (install, typecheck, unit tests, production build, browser smoke against packed `@g2w/*` tarballs) remains `node scripts/smoke-create-g2w.mjs` as a manual, non-CI check. From a clone, the CLI can be run directly: `node packages/create-g2w/dist/cli.js my-game` (after `pnpm build`).
 
 ## Development commands
 
@@ -194,7 +196,7 @@ Note on the screenshots: they were captured from a real headed-Chrome session vi
 - **No dedicated animation framework** — animation is done by mutating models in `update(deltaTime)` (the demo does this for rotation/scale); there are no tweening, keyframe, or skeletal systems.
 - **No key/button remapping, action mapping, or rebinding** — gamepad and touch deliver raw button/axis/position state; remapping and high-level action systems are future roadmap items.
 - **No 3D adapter** — the Three.js adapter is exploratory ([ROADMAP.md](ROADMAP.md) R8).
-- **The `@g2w/*` packages are not published to npm** — generated `create-g2w` projects declare them at `0.1.0`; until R10 lands, they are validated and consumed through locally packed tarballs (`node scripts/smoke-create-g2w.mjs`), and `pnpm create g2w` requires publishing first.
+- **The `@g2w/*` packages are early 0.x releases** — published to npm at `0.1.0` (2026-10-28); the public API may still change before 1.0, and generated `create-g2w` projects pin that released version. The end-to-end scaffold validation still runs against locally packed tarballs (`node scripts/smoke-create-g2w.mjs`) as a manual check.
 - **Texture lifetime is non-destructive** — neither the asset manager nor the renderer ever destroys textures from PixiJS's shared cache; they live until page unload unless the application unloads them explicitly (the resolved R1 decision, documented in [ARCHITECTURE.md](ARCHITECTURE.md) and [ROADMAP.md](ROADMAP.md)).
 - **DevTools is read-only and dev-only** — the overlay observes snapshots only (scenes, registered objects, explicitly watched keys/buttons, FPS, bounded log); it cannot mutate the runtime, does not see unwatched input, labels objects positionally (`#N`, not stable IDs), and is not included in production bundles.
 
@@ -288,6 +290,6 @@ Ownership: the caller owns the input state and the browser adapter; the game own
 
 ## What is planned (not implemented yet)
 
-See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Recently completed: renderer sizing (R3), sprite anchors and z-ordering (R11), audio (R4), gamepad/touch input (R5), the Effect-native game lifecycle (E2), E3 renderer/input adapter lifecycle hardening, and E4 — the demo now boots through `G2WGame`, making Effect the primary application runtime. E3 keeps adapters imperative and failure-safe; Effect remains at the higher-level runtime ownership boundary. Exploratory: a starter template and CLI, a Three.js adapter, integrations (React, Vue), and npm publishing.
+See [ROADMAP.md](ROADMAP.md) for the full list with statuses and priorities. Recently completed: renderer sizing (R3), sprite anchors and z-ordering (R11), audio (R4), gamepad/touch input (R5), the Effect-native game lifecycle (E2), E3 renderer/input adapter lifecycle hardening, E4 — the demo now boots through `G2WGame`, making Effect the primary application runtime — and npm publishing (R10): all `@g2w/*` packages plus `create-g2w` are on npm at 0.1.0. Exploratory: a Three.js adapter and integrations (React, Vue).
 
-Packages are not published to npm yet; the workspace is for local development and CI.
+All `@g2w/*` packages and the `create-g2w` CLI are published to npm at 0.1.0; the workspace remains the local development and CI environment.

@@ -228,6 +228,10 @@ a {
   min-width: 2ch;
   text-align: left;
 }
+.nav-gh .gh-mark {
+  fill: currentColor;
+  flex-shrink: 0;
+}
 
 /* ---------- badges ---------- */
 .badge {
@@ -783,8 +787,24 @@ a {
   .nav-search-key {
     display: none;
   }
+  .version-badge {
+    display: none;
+  }
   .nav-star {
     display: none;
+  }
+  .navbar-inner {
+    gap: 12px;
+    height: 56px;
+  }
+  .navbar-right {
+    gap: 8px;
+  }
+  .nav-gh .gh-label {
+    display: none;
+  }
+  .nav-gh {
+    padding: 6px 10px;
   }
   .navbar-links {
     display: none;

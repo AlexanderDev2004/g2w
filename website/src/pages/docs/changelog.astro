@@ -1,0 +1,154 @@
+---
+import Base from "../../layouts/Base.astro";
+import DocsSidebar from "../../components/DocsSidebar.astro";
+
+const LAST_REVIEWED = "2026-11-04";
+
+// Summary of CHANGELOG.md on the date above. The GitHub changelog is the
+// source of truth; new releases append a section there and on this page.
+interface Release {
+  version: string;
+  date: string;
+  tagline: string;
+  tagUrl: string;
+  packages: { name: string; what: string }[];
+  capabilities: string[];
+  infrastructure: string[];
+  breaking: string;
+}
+
+const releases: Release[] = [
+  {
+    version: "0.1.0",
+    date: "2026-10-28",
+    tagline:
+      "The first public release of the g2w framework: a TypeScript-first, AI-agent-ready framework for building and shipping 2D web games with PixiJS.",
+    tagUrl: "https://github.com/AlexanderDev2004/g2w/releases/tag/v0.1.0",
+    packages: [
+      { name: "@g2w/core", what: "Renderer-agnostic core contracts: Game lifecycle and frame loop, SceneManager, DOM-free InputState (keyboard, pointer, multi-touch) and GamepadState, generic AssetManager, Transform2D/Sprite2D, GameObject/GameObjectCollection, AudioManager, and the renderer contract with a shared conformance suite. Zero runtime dependencies." },
+      { name: "@g2w/renderer-pixi", what: "PixiJS renderer adapter: the Renderer contract, texture asset loading (createTextureAssetManager), sprite views (createSpriteView), optional backend preference and actual-backend reporting (WebGL/WebGPU/Canvas)." },
+      { name: "@g2w/input-dom", what: "Browser input adapter: real DOM events (Pointer Events) onto the core InputState. Failure-safe attach/dispose lifecycle with transactional registration and idempotent disposal." },
+      { name: "@g2w/input-gamepad", what: "Gamepad API adapter: samples gamepads onto the core GamepadState through an injectable polling source the host drives with poll(). Same failure-safe lifecycle as the DOM adapter." },
+      { name: "@g2w/audio-web", what: "Web Audio adapter: implements the core audio backend contract — decodes sound files, starts playbacks, owns the AudioContext lifecycle." },
+      { name: "@g2w/devtools", what: "Read-only runtime overlay for development: observes core state through immutable snapshots, never mutates or disposes the runtime." },
+      { name: "@g2w/runtime", what: "Effect-based runtime foundation: one managed Effect runtime, explicit idempotent shutdown, best-effort finalizer cleanup, and G2WGame — the core game lifecycle orchestrated through the managed runtime (the primary application path; the core Game remains the reference implementation)." },
+      { name: "create-g2w", what: "Zero-dependency project-scaffolding CLI: generates a TypeScript + Vite starter game from a bundled template (public @g2w/* APIs only, pinned versions, local git init). Accepts --package-manager npm|pnpm|yarn|bun for its printed next steps." },
+    ],
+    capabilities: [
+      "Renderer backend selection (RendererInitOptions.backend) and reporting (RendererCapabilities.backend), with a shared renderer conformance suite and browser-verified WebGL/WebGPU/Canvas backends including per-backend feature verification.",
+      "Failure-safe adapter lifecycles for the renderer and both input adapters: shared in-flight initialization, rollback of partial registration with retryable cleanup, and deterministic disposal — including dispose-during-initialization.",
+      "Effect as the primary application runtime (G2WGame) with the frame hot path free of Effect allocations; @g2w/core stays dependency-free and Effect-free.",
+      "The create-g2w starter validated end to end against packed tarballs (pnpm test:pack) with an external TypeScript + Vite consumer, plus a headless-browser smoke test of the scaffolded game.",
+    ],
+    infrastructure: [
+      "Fixed-version monorepo: all eight packages share one version and move together (policy in docs/release.md).",
+      "Gated release workflow (release.yml, workflow_dispatch-only): the publish job requires main, dry_run=false, an exact version confirmation, and the protected npm-release environment. Publishing authenticates through npm Trusted Publishing (OIDC) with provenance — no npm token exists.",
+      "Pack validation (pnpm test:pack) and release rehearsal (pnpm release:rehearsal) audit every tarball and the workflow's security boundaries before anything reaches the registry.",
+    ],
+    breaking: "None — initial release.",
+  },
+];
+---
+
+<Base
+  title="Changelog · g2w docs"
+  description="Every notable g2w release: packages shipped, capabilities added, and breaking changes — versioned as one fixed-version monorepo."
+>
+  <div class="docs">
+    <DocsSidebar active="changelog" />
+
+    <main class="docs-main prose">
+      <div class="crumb">docs / changelog</div>
+      <h1>Changelog</h1>
+      <p>
+        All notable changes to the g2w packages. This is a rendering of{" "}
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/CHANGELOG.md">CHANGELOG.md</a>,
+        which is the source of truth. All eight publishable packages share one
+        version (fixed-version monorepo policy — see{" "}
+        <a href="https://github.com/AlexanderDev2004/g2w/blob/main/docs/release.md">docs/release.md</a>),
+        so every release below is one version for the whole framework.
+      </p>
+      <p class="reviewed mono">Last reviewed against CHANGELOG.md: {LAST_REVIEWED}</p>
+
+      {releases.map((release) => (
+        <section>
+          <h2 id={`v${release.version}`}>
+            <a class="anchor" href={`#v${release.version}`} aria-label="Link to this release">
+              {release.version}
+            </a>
+            <span class="mono release-date"> — {release.date} · <a href={release.tagUrl}>release tag</a></span>
+          </h2>
+          <p>{release.tagline}</p>
+
+          <h3>Packages released</h3>
+          <div class="pkg-table" style="box-shadow: none">
+            <table>
+              <thead>
+                <tr><th>Package</th><th>What it ships</th></tr>
+              </thead>
+              <tbody>
+                {release.packages.map((pkg) => (
+                  <tr>
+                    <td class="name"><code>{pkg.name}</code></td>
+                    <td class="desc">{pkg.what}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+
+          <h3>Notable capabilities</h3>
+          <ul>
+            {release.capabilities.map((item) => <li set:html={item} />)}
+          </ul>
+
+          <h3>Release infrastructure</h3>
+          <ul>
+            {release.infrastructure.map((item) => <li set:html={item} />)}
+          </ul>
+
+          <h3>Breaking changes</h3>
+          <p>{release.breaking}</p>
+        </section>
+      ))}
+
+      <div class="callout" style="box-shadow: none">
+        <span class="tag">Upgrade</span>
+        <span>
+          Projects scaffolded with <code>create-g2w</code> pin the released
+          version. To move a project to a newer release, bump the{" "}
+          <code>@g2w/*</code> versions in its <code>package.json</code> — all
+          packages always move together.
+        </span>
+      </div>
+    </main>
+
+    <aside class="docs-toc">
+      <div class="ttl">On this page</div>
+      <a class="on" href="#">Changelog</a>
+      {releases.map((release) => (
+        <a href={`#v${release.version}`}>{release.version} — {release.date}</a>
+      ))}
+    </aside>
+  </div>
+</Base>
+
+<style>
+  .reviewed {
+    font-size: 12px;
+    color: var(--ink-40);
+    margin-top: -8px;
+  }
+  .release-date {
+    font-size: 13px;
+    font-weight: 400;
+    color: var(--ink-60);
+  }
+  .anchor {
+    color: inherit;
+    text-decoration: none;
+  }
+  .anchor:hover {
+    text-decoration: underline;
+  }
+</style>

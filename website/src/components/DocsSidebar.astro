@@ -1,6 +1,6 @@
 ---
 interface Props {
-  active: "introduction" | "installation" | "first-game" | "devtools" | "roadmap" | "comparison" | "benchmarks";
+  active: "introduction" | "installation" | "first-game" | "devtools" | "roadmap" | "comparison" | "benchmarks" | "changelog";
 }
 
 const { active } = Astro.props;
@@ -23,6 +23,7 @@ const items = [
   { id: "comparison", label: "Framework Comparison", href: "/docs/comparison", grp: "Project" },
   { id: "roadmap", label: "Roadmap", href: "/docs/roadmap", grp: "Project" },
   { id: "benchmarks", label: "Benchmarks", href: "/docs/benchmarks", grp: "Project" },
+  { id: "changelog", label: "Changelog", href: "/docs/changelog", grp: "Project" },
 ];
 ---
 

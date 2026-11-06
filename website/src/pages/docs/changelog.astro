@@ -121,6 +121,19 @@ const releases: Release[] = [
           packages always move together.
         </span>
       </div>
+
+      <h2 id="commits">
+        <a class="anchor" href="#commits" aria-label="Link to recent commits">Recent commits</a>
+      </h2>
+      <p>
+        The latest commits on <code>main</code>, fetched live from the GitHub API —
+        the same stream as the{" "}
+        <a href="https://github.com/AlexanderDev2004/g2w/commits/main/">commit history</a>.
+        When the API is unreachable (offline, rate-limited), use the GitHub link.
+      </p>
+      <div class="commit-log" id="commit-log" aria-live="polite">
+        <div class="commit-row mono">Loading commits from api.github.com…</div>
+      </div>
     </main>
 
     <aside class="docs-toc">
@@ -129,8 +142,50 @@ const releases: Release[] = [
       {releases.map((release) => (
         <a href={`#v${release.version}`}>{release.version} — {release.date}</a>
       ))}
+      <a href="#commits">Recent commits</a>
     </aside>
   </div>
+
+  <script>
+    // Commit log: rendered with textContent only — the API payload is never
+    // trusted as HTML. The static loading row stays when the fetch fails.
+    const log = document.getElementById("commit-log");
+    if (log) {
+      const REPO = "AlexanderDev2004/g2w";
+      const shortDate = (iso: string) => iso.slice(0, 10);
+      fetch(`https://api.github.com/repos/${REPO}/commits?per_page=15`, {
+        headers: { Accept: "application/vnd.github+json" },
+      })
+        .then((response) => (response.ok ? response.json() : null))
+        .then((commits) => {
+          if (!Array.isArray(commits) || commits.length === 0) return;
+          log.replaceChildren();
+          for (const commit of commits) {
+            const sha = commit?.sha;
+            const message: unknown = commit?.commit?.message;
+            const date: unknown = commit?.commit?.author?.date;
+            if (typeof sha !== "string" || typeof message !== "string") continue;
+            const row = document.createElement("a");
+            row.className = "commit-row";
+            row.href = `https://github.com/${REPO}/commit/${sha}`;
+            row.target = "_blank";
+            row.rel = "noopener noreferrer";
+            const hash = document.createElement("code");
+            hash.className = "commit-sha";
+            hash.textContent = sha.slice(0, 7);
+            const title = document.createElement("span");
+            title.className = "commit-msg";
+            title.textContent = message.split("\n", 1)[0] ?? "";
+            const when = document.createElement("span");
+            when.className = "commit-date mono";
+            when.textContent = typeof date === "string" ? shortDate(date) : "";
+            row.append(hash, title, when);
+            log.append(row);
+          }
+        })
+        .catch(() => {});
+    }
+  </script>
 </Base>
 
 <style>
@@ -150,5 +205,54 @@ const releases: Release[] = [
   }
   .anchor:hover {
     text-decoration: underline;
+  }
+  .commit-log {
+    border: 2px solid var(--ink);
+    background: var(--paper-2);
+    box-shadow: var(--shadow-sm);
+  }
+  .commit-row {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    padding: 8px 14px;
+    border-bottom: 1px solid var(--line);
+    font-size: 13px;
+    text-decoration: none;
+    color: inherit;
+  }
+  .commit-row:last-child {
+    border-bottom: none;
+  }
+  a.commit-row:hover {
+    background: var(--line);
+  }
+  .commit-sha {
+    font-family: var(--mono);
+    font-size: 12px;
+    flex-shrink: 0;
+    border: 1px solid var(--line);
+    background: var(--paper);
+    padding: 1px 6px;
+  }
+  .commit-msg {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .commit-date {
+    flex-shrink: 0;
+    font-size: 11px;
+    color: var(--ink-40);
+  }
+  @media (max-width: 640px) {
+    .commit-date {
+      display: none;
+    }
+    .commit-msg {
+      white-space: normal;
+    }
   }
 </style>

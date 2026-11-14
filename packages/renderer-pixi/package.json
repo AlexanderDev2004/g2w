@@ -33,6 +33,6 @@
     "node": ">=22"
   },
   "devDependencies": {
-    "pixi.js": "8.22.0"
+    "pixi.js": "8.23.0"
   }
 }

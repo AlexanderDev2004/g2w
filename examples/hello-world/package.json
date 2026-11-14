@@ -17,7 +17,7 @@
     "@g2w/input-gamepad": "workspace:*",
     "@g2w/runtime": "workspace:*",
     "@g2w/renderer-pixi": "workspace:*",
-    "pixi.js": "8.22.0"
+    "pixi.js": "8.23.0"
   },
   "devDependencies": {
     "vite": "^8.3.5"
